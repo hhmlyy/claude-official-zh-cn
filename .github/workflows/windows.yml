@@ -1,0 +1,26 @@
+name: Windows verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official Windows fixture
+        shell: ${{ matrix.shell }}
+        run: |
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://downloads.claude.ai/releases/win32/x64/3.6556.2/Claude-20c019a1e61fa5b687616af57d31f97bb3181723.msix' -OutFile (Join-Path $env:RUNNER_TEMP 'Claude.msix')
+      - name: Verify installer on Windows
+        shell: ${{ matrix.shell }}
+        run: |
+          & ./tests/Test-Installer.ps1 -MsixPath (Join-Path $env:RUNNER_TEMP 'Claude.msix')
