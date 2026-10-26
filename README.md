@@ -4,6 +4,19 @@
 
 这是独立的社区工具，与 Anthropic、Claude、Magpie 无隶属关系。“官方”仅指翻译资源来源。安装会修改本地应用的语言注册 JavaScript，应用更新可能覆盖修改。
 
+## 直接下载双击包
+
+普通用户请下载 [GitHub Release](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest) 中对应平台的 ZIP，**完整解压后再双击入口**。两个包均内置经过固定 SHA-256 核验的官方主语言包和动态语言包，安装时无需联网下载资源。
+
+| 平台 | 下载 | 解压后双击 |
+| --- | --- | --- |
+| macOS | [Claude-ZhCN-macOS-3.6556.2.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-macOS-3.6556.2.zip) | `Install-ClaudeZhCN.command` |
+| Windows | [Claude-ZhCN-Windows-3.6556.2.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-Windows-3.6556.2.zip) | `ClaudeZhCN.cmd` |
+
+仅适配 **Claude Desktop 3.6556.2**。Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安装不支持修改。macOS ZIP 保留入口的可执行权限，不需要手动 `chmod`；未使用 Apple 开发者证书签名或公证，系统可能要求首次打开确认，参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
+每个包附有 `README.txt` 和许可说明；Release 同时提供 `SHA256SUMS.txt` 供核对下载完整性。GitHub 自动生成的 **Source code** 压缩包不含官方语言资源，开发者可按下方源码使用说明运行。
+
 ## 支持范围
 
 | 项目 | 当前范围 |
@@ -19,7 +32,7 @@
 
 当前官方 Windows 安装器可能安装为 MSIX，因此本版**不能保证所有默认安装方式都能使用**。脚本会明确提示，不会接管 WindowsApps 权限、重新打包 MSIX、改动应用签名或更改系统策略。官方安装说明见 [Deploy Claude Desktop for Windows](https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows)。
 
-## Windows 使用
+## Windows 源码使用
 
 1. 下载并解压本仓库全部文件，不能只下载 `.cmd`。
 2. 从系统托盘菜单完全退出 Claude。
@@ -54,7 +67,7 @@
 %LOCALAPPDATA%\ClaudeOfficialZhHans\3.6556.2\<安装路径摘要>\
 ```
 
-## macOS 使用
+## macOS 源码使用
 
 下载并解压本仓库，在解压目录中打开终端，运行：
 
@@ -142,4 +155,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Installer.p
 
 ## 许可
 
-本仓库自行编写的脚本、测试与文档使用 [MIT License](LICENSE)。Claude、Magpie 及官方语言包的权利归各自权利人所有，不包含在本仓库 MIT 许可中。仓库不分发 Claude 应用、修改后的应用主包或官方翻译文件。
+本仓库自行编写的脚本、测试与文档使用 [MIT License](LICENSE)。Claude、Magpie 及官方语言包的权利归各自权利人所有，不包含在本仓库 MIT 许可中。源码树不包含官方翻译文件；Release 离线包附带前文已注明来源与哈希的两份原始官方 JSON，其权利不因打包而转移。本项目不分发 Claude 应用或修改后的应用主包。
