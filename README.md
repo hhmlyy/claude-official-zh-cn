@@ -1,4 +1,4 @@
-# Claude 官方简体中文注册工具 · Windows
+# Claude 官方简体中文注册工具 · macOS / Windows
 
 让 Claude Desktop 的本地界面（包括 Magpie 的第三方网关模式）在原有 **Language** 菜单中出现 **中文（简体）**，并加载 Claude 官方主语言包和动态语言包。
 
@@ -9,8 +9,9 @@
 | 项目 | 当前范围 |
 | --- | --- |
 | Claude Desktop | **3.6556.2**，四个关键资源的 SHA-256 必须全部匹配 |
+| macOS | 系统自带 Bash 3.2；默认安装位置 `/Applications/Claude.app` |
 | Windows | Windows PowerShell **5.1** 或 PowerShell **7** |
-| 安装目录 | 当前用户可写的普通安装目录，可自动发现或手动指定 |
+| 安装目录 | 当前用户可写的普通安装目录；Windows 自动发现，两个平台均可手动指定 |
 | MSIX / Microsoft Store | 能检查；**不支持修改受保护的 WindowsApps 目录** |
 | 界面验证 | 同一前端资源的 macOS 版本已验证菜单切换；Windows 图形界面尚未实机验证 |
 
@@ -18,7 +19,7 @@
 
 当前官方 Windows 安装器可能安装为 MSIX，因此本版**不能保证所有默认安装方式都能使用**。脚本会明确提示，不会接管 WindowsApps 权限、重新打包 MSIX、改动应用签名或更改系统策略。官方安装说明见 [Deploy Claude Desktop for Windows](https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows)。
 
-## 使用
+## Windows 使用
 
 1. 下载并解压本仓库全部文件，不能只下载 `.cmd`。
 2. 从系统托盘菜单完全退出 Claude。
@@ -53,6 +54,44 @@
 %LOCALAPPDATA%\ClaudeOfficialZhHans\3.6556.2\<安装路径摘要>\
 ```
 
+## macOS 使用
+
+下载并解压本仓库，在解压目录中打开终端，运行：
+
+```bash
+bash ./Install-ClaudeZhCN.command
+```
+
+脚本默认退出并重新打开 Claude。完成后，在账号菜单 → **Language → 中文（简体）** 中选择。若希望双击运行，先执行一次 `chmod +x ./Install-ClaudeZhCN.command`。
+
+只检查、不下载、不修改：
+
+```bash
+bash ./Install-ClaudeZhCN.command --check
+```
+
+撤销注册，恢复原始注册文件，并移除两份官方中文 JSON：
+
+```bash
+bash ./Install-ClaudeZhCN.command --restore
+```
+
+自定义应用位置，或自行退出和重启：
+
+```bash
+bash ./Install-ClaudeZhCN.command --app '/path/to/Claude.app' --no-restart
+```
+
+脚本同样优先使用下方 `catalogs` 目录中的两份官方 JSON，也可通过 `--catalog-dir '/path/to/catalogs'` 指定目录。缺少文件时下载并核验官方资源，下载失败不会修改应用。无需 Node.js、Python 或其他依赖。
+
+默认备份目录如下，兼容此前 Mac 注册脚本的 `shared-52.original.js` 备份，也可通过 `--backup-dir` 指定：
+
+```text
+~/Library/Application Support/ClaudeOfficialZhHans/3.6556.2/
+```
+
+macOS 还原会移除两份中文 JSON，包括安装前已存在且哈希匹配的文件。脚本逐个暂存并校验文件后替换；中断后可重新安装或还原。修改应用资源会影响原签名校验，脚本不重签名。
+
 ## 官方资源与下载失败处理
 
 | 资源 | 官方地址 | SHA-256 |
@@ -66,12 +105,13 @@
 claude-official-zh-cn\
   ClaudeZhCN.cmd
   Install-ClaudeZhCN.ps1
+  Install-ClaudeZhCN.command
   catalogs\
     zh-Hans.official.json
     zh-Hans.dynamic.official.json
 ```
 
-必须保存原始响应内容，不能保存为网页、手工格式化或改变编码。文件不符合上表哈希时脚本会拒绝安装。也可使用 `-CatalogDirectory 'D:\官方语言包'` 指定已有文件目录。下载失败发生在修改应用前。
+必须保存原始响应内容，不能保存为网页、手工格式化或改变编码。文件不符合上表哈希时脚本会拒绝安装。Windows 可使用 `-CatalogDirectory 'D:\官方语言包'`，macOS 可使用 `--catalog-dir '/path/to/catalogs'` 指定已有文件目录。下载失败发生在修改应用前。
 
 官方主语言包并不覆盖此版全部英文键，少量新文案会继续显示英文。本工具不自行翻译这些内容。
 
@@ -80,9 +120,11 @@ claude-official-zh-cn\
 - 向经过固定哈希核验的 `shared-52-uHFNjl7C.js` 末尾加入两个 `zh-Hans` 列表注册语句，保留原有语言菜单和语言偏好保存逻辑。
 - 写入 `ion-dist/i18n/zh-Hans.json` 和 `ion-dist/i18n/dynamic/zh-Hans.json`，每次都校验 SHA-256。
 - 保留英文 JSON、语言加载模块、账号信息、Magpie 网关配置及 `app.asar`。不用于解锁付费或云端功能。
-- 备份只保存原始注册文件与资源存在状态。安装、还原中途失败时尝试回滚；其他程序已改动的文件不会被强行覆盖。
+- Windows 备份保存原始注册文件与资源存在状态，安装、还原中途失败时尝试回滚。macOS 备份保存原始注册文件，采用逐文件暂存替换。两个平台均拒绝覆盖校验不符的资源。
 
 ## 验证
+
+macOS 已在 Bash 3.2 下使用真实应用资源的隔离副本验证安装、重复安装、完整注册检查、离线还原和重复还原，并核对还原后的注册文件及英文 JSON 哈希。实际安装的 Claude 也通过只读注册检查；语言菜单切换此前已实机验证。
 
 `tests/Test-Installer.ps1` 使用官方 Windows 安装包中的真实资源进行验证。默认测试注册结果的固定哈希、未知版本拒绝、未知中文文件拒绝、文件替换和原始文件还原。
 
