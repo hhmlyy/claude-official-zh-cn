@@ -1,0 +1,8 @@
+# Local official catalogs and application backups are not project source.
+catalogs/
+*.zip
+*.msix
+*.asar
+registry.original.js
+state.json
+.DS_Store
