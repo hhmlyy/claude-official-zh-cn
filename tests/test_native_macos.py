@@ -1,4 +1,4 @@
-"""Intel 原生补丁：真实 ASAR 保真、配置隔离、安装失败回滚与官方原版恢复。"""
+"""原生补丁：真实 ASAR 保真、配置隔离、安装失败回滚与官方原版恢复。"""
 import importlib.util
 import json
 import os
@@ -16,6 +16,13 @@ SPEC = importlib.util.spec_from_file_location("native_macos", ROOT / "native_mac
 native = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(native)
 FIXTURE = os.environ.get("CLAUDE_NATIVE_FIXTURE")
+CATALOG_DIR = pathlib.Path(os.environ.get("CLAUDE_NATIVE_CATALOG_DIR", str(ROOT / "catalogs")))
+
+
+class ArchitectureTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("CLAUDE_NATIVE_HOST_ARCH"), "未指定真实测试机架构")
+    def test_actual_host_architecture(self):
+        self.assertEqual(native.host_architecture(), os.environ["CLAUDE_NATIVE_HOST_ARCH"])
 
 
 class BrowserConfigTests(unittest.TestCase):
@@ -66,8 +73,20 @@ class BrowserConfigTests(unittest.TestCase):
             native.browser(self.args)
 
 
-@unittest.skipUnless(FIXTURE, "设置 CLAUDE_NATIVE_FIXTURE 指向已核验的官方 Intel 应用副本")
-class IntelFixtureTests(unittest.TestCase):
+@unittest.skipUnless(FIXTURE, "设置 CLAUDE_NATIVE_FIXTURE 指向官方应用副本")
+class NativeFixtureTests(unittest.TestCase):
+    def setUp(self):
+        self.architecture = os.environ.get("CLAUDE_NATIVE_FIXTURE_ARCH", native.host_architecture())
+        if os.environ.get("CLAUDE_NATIVE_FIXTURE_ARCH"):
+            patcher = mock.patch.object(native, "host_architecture", return_value=self.architecture)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_source_rejects_an_incompatible_architecture(self):
+        with mock.patch.object(native, "host_architecture", return_value="unsupported"):
+            with self.assertRaisesRegex(ValueError, "处理器不匹配"):
+                native.source(pathlib.Path(FIXTURE))
+
     def test_asar_changes_only_the_two_availability_gates(self):
         original = native.read(pathlib.Path(FIXTURE) / native.ASAR)
         patched, header_hash = native.patched_asar(original)
@@ -89,7 +108,7 @@ class IntelFixtureTests(unittest.TestCase):
             syntax = subprocess.run(["node", "--check"], input=native.main_bytes(patched),
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.assertEqual(syntax.returncode, 0, syntax.stderr.decode(errors="replace"))
-        with self.assertRaisesRegex(ValueError, "Intel 原版"):
+        with self.assertRaisesRegex(ValueError, "官方原版"):
             native.patched_asar(patched)
 
     def test_real_bundle_install_rollback_idempotence_and_restore(self):
@@ -102,12 +121,22 @@ class IntelFixtureTests(unittest.TestCase):
             config_path = configs / "fixture.json"
             config_path.write_text(json.dumps(original_config))
             native.run("/usr/bin/ditto", pathlib.Path(FIXTURE), app)
-            state_dir = backup / "native-x86_64"
+            state_dir = backup / ("native-" + self.architecture)
             state_dir.mkdir(parents=True)
             args = types.SimpleNamespace(app=app, backup_dir=backup, config_dir=configs,
-                                         catalog_dir=ROOT / "catalogs", state_dir=state_dir, no_restart=True)
+                                         catalog_dir=CATALOG_DIR, state_dir=state_dir, no_restart=True)
             baseline = native.snapshot(app)
             native.prepare(args)
+            self.assertEqual(native.snapshot(app), baseline)
+            original_source = native.source
+
+            def source_with_other_backup(path):
+                build = original_source(path)
+                return dict(build, node="different") if path == state_dir / "Claude.original.app" else build
+
+            with mock.patch.object(native, "source", side_effect=source_with_other_backup):
+                with self.assertRaisesRegex(ValueError, "备份属于不同构建"):
+                    native.prepare(args)
             self.assertEqual(native.snapshot(app), baseline)
             backup_plist = state_dir / "Claude.original.app/Contents/Info.plist"
             original_plist = native.read(backup_plist)
