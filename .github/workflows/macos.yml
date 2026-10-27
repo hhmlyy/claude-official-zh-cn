@@ -10,13 +10,17 @@ permissions:
 
 jobs:
   verify:
-    runs-on: macos-26
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [macos-15, macos-26]
         fixture: [arm64, universal]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Download verified runtime and language resources
         shell: bash
         run: |
@@ -61,15 +65,10 @@ jobs:
           ditto "$RUNNER_TEMP/fixture/Claude.app" "$package/Claude.app"
           printf '%s' '{"appliedId":"fixture"}' > "$config/_meta.json"
           printf '%s' '{"inferenceProvider":"gateway"}' > "$config/fixture.json"
-          if [[ "$(sw_vers -productVersion)" == '26.5.2' ]]; then
-            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --restore --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-          else
-            if result=$(HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" 2>&1); then exit 1; fi
-            [[ "$result" == *'原生补丁仅适配 macOS 26.5.2'* ]]
-          fi
+          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --restore --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
       - name: Detach universal fixture
         if: always() && matrix.fixture == 'universal'
         shell: bash

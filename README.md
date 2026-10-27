@@ -17,7 +17,7 @@ macOS 包包含经过固定文件指纹核验的 **Intel 和 Apple Silicon 原�
 
 仅适配 **Claude Desktop 3.6556.2**。Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安装不支持修改。macOS ZIP 保留入口的可执行权限，不需要手动 `chmod`；未使用 Apple 开发者证书签名或公证，系统可能要求首次打开确认，参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
-macOS 原生功能仅适用于 **Intel 或 Apple Silicon / macOS 26.5.2** 的已登记官方构建，安装前请等待任务结束并退出 Claude。此模式会本地重签应用并放宽该应用的动态库签名限制，官方硬件密钥等登录能力无法保留；脚本保存完整官方备份以供还原。其他系统版本或构建会停止并显示原因。
+macOS 安装器不再锁定单一系统版本，仍只接受 **Claude 3.6556.2 的已登记官方构建**。该版本应用声明最低 macOS 13，电脑控制的内置检查要求 macOS 14 或更新版本；后台窗口控制还受 Claude 自身的系统版本条件限制。未实测的系统不能保证功能正常。安装前请等待任务结束并退出 Claude。此模式会本地重签应用并放宽该应用的动态库签名限制，官方硬件密钥等登录能力无法保留；脚本保存完整官方备份以供还原。
 
 每个包附有 `README.txt` 和许可说明；Release 同时提供 `SHA256SUMS.txt` 供核对下载完整性。GitHub 自动生成的 **Source code** 压缩包不含官方语言资源，开发者可按下方源码使用说明运行。
 
@@ -27,7 +27,7 @@ macOS 原生功能仅适用于 **Intel 或 Apple Silicon / macOS 26.5.2** 的已
 | --- | --- |
 | Claude Desktop | **3.6556.2**，四个关键资源的 SHA-256 必须全部匹配 |
 | macOS | 系统自带 Bash 3.2；默认安装位置 `/Applications/Claude.app` |
-| macOS 原生工具适配 | **Intel x86_64 或 Apple Silicon arm64 / macOS 26.5.2 / Claude 3.6556.2**；Release 包自带运行环境，源码使用 Python **3.9+** |
+| macOS 原生工具适配 | **Intel x86_64 或 Apple Silicon arm64 / Claude 3.6556.2 已登记构建**；电脑控制需 macOS 14+，Release 包自带运行环境，源码使用 Python **3.9+** |
 | Windows | Windows PowerShell **5.1** 或 PowerShell **7** |
 | 安装目录 | 当前用户可写的普通安装目录；Windows 自动发现，两个平台均可手动指定 |
 | MSIX / Microsoft Store | 能检查；**不支持修改受保护的 WindowsApps 目录** |
