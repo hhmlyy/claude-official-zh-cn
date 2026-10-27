@@ -18,6 +18,9 @@ jobs:
         fixture: [arm64, universal]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Download verified runtime and language resources
         shell: bash
         run: |
