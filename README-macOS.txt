@@ -1,29 +1,45 @@
-Claude 官方简体中文注册工具 — macOS 离线双击包
-工具版本：1.0.0；仅适配 Claude Desktop 3.6556.2。
+Claude 官方中文与原生工具 — macOS
+仅适配 Claude Desktop 3.6556.2；此包包含中文注册和已核验的 Intel 原生工具适配。
 
 使用方法
-1. 完整解压 ZIP，保留 catalogs 文件夹与入口脚本的相对位置。
-2. 双击 Install-ClaudeZhCN.command，等待终端显示结果。
-3. 脚本会退出并重新打开 Claude。在账号菜单 → Language → 中文（简体）中选择。
+1. 完整解压 ZIP，保留整个目录，包括 native_macos.py、catalogs 和入口脚本。
+2. 等 Claude 当前任务结束，再正常退出 Claude。
+3. 双击 Install-ClaudeZhCN.command，或在终端运行 bash ./Install-ClaudeZhCN.command。
+4. 安装成功后会重新打开 Claude。在账号菜单 → Language → 中文（简体）中选择。
 
-本包已经包含两份原始官方语言 JSON，不需要联网下载资源，也不需要手动设置可执行权限或安装其他依赖。默认应用位置为 /Applications/Claude.app。兼容 Apple 芯片与 Intel Mac 的系统 Bash，具体应用资源仍须通过全部哈希检查。
+默认应用位置为 /Applications/Claude.app。Intel x86_64 / macOS 26.5.2 默认同时安装中文与原生工具适配，需要 Python 3.9 或更新版本，无第三方 Python 依赖；其他平台默认只注册中文。所有模式均须通过固定文件哈希检查。原生模式检测到 Claude 仍在运行时会停止，不会强制结束任务。
+
+语言 JSON 优先从 catalogs 读取；缺少时从固定官方地址下载并核验。Release 离线包包含两份原始官方 JSON；GitHub 自动生成的 Source code 压缩包不包含语言资源。
+
+原生适配只恢复本地功能开关。电脑控制仍需在 Claude 设置中启用、取得系统的辅助功能与屏幕录制权限，并由模型和网关支持相应工具协议。官方操作检查和确认逻辑保持原样。浏览器使用官方内置浏览器，不更改网关地址或密钥。
+
+上述 Intel / macOS 26.5.2 / Claude 3.6556.2 组合已在 Magpie 下实机验证：辅助功能与屏幕录制均已授予，Claude 自带电脑控制通过界面点击计算 1+2，截图确认结果为 3；内置浏览器成功打开并读取 https://example.com。结果仅覆盖此构建及测试时的模型、网关组合。安装、回滚、重复安装、完整还原与配置保护的 6 项自动测试也已通过。
 
 入口未使用 Apple 开发者证书签名或公证。如果系统拦截首次打开，请查看 Apple 的官方说明：
 https://support.apple.com/zh-cn/102445
-安装会修改应用资源并影响原签名校验；脚本不重签名。
+原生模式修改 app.asar、同步摘要并本地临时重签最外层应用，嵌套原生组件保持原文件。临时签名不等于开发者签名或公证，系统可能要求重新授权。仅中文模式不重签名。
+临时签名移除依赖官方证书的应用标识与钥匙串访问组，官方 WebAuthn、硬件密钥及企业登录共享钥匙串能力不能保留。保留 hardened runtime，但为加载官方 Electron 框架，对本应用设置 disable-library-validation 例外，放宽其动态库签名限制。完整还原可恢复官方签名与原权限项。
 
 遇到错误时，终端会显示原因。版本或文件校验不符时停止，不要把其他版本的文件覆盖进应用。
 
 还原与检查
-如需撤销注册，在本目录打开终端运行：
+Claude 有任务运行时，只准备待安装副本，不替换当前应用：
+bash ./Install-ClaudeZhCN.command --prepare
+任务结束并正常退出后，再执行普通安装命令。
+
+正常退出 Claude 后，在本目录打开终端完整还原：
 bash ./Install-ClaudeZhCN.command --restore
 只检查当前安装状态：
 bash ./Install-ClaudeZhCN.command --check
-还原会移除两份中文 JSON，并从以下备份恢复原始注册文件：
+原生模式恢复具有官方签名的完整应用和安装前的浏览器开关，中文一并撤销。完整应用备份和安装记录保存在下列目录中的 native-x86_64：
 ~/Library/Application Support/ClaudeOfficialZhHans/3.6556.2/
 
+仅执行原有中文注册：
+bash ./Install-ClaudeZhCN.command --language-only
+仅中文模式的还原加上 --restore --language-only，会恢复注册文件并移除两份中文 JSON。原生模式安装后应使用普通 --restore 完整还原。
+
 资源与许可
-本工具是独立社区项目；“官方”仅指翻译资源来源。自行编写的脚本与文档采用附带的 MIT License；官方语言资源权利归 Anthropic，不在 MIT 授权范围内。本包不包含 Claude 应用或修改后的应用主包。
+本工具是独立社区项目；“官方”仅指翻译资源来源。自行编写的脚本与文档采用附带的 MIT License；原生适配引用与上游许可见 THIRD_PARTY_NOTICES.md。官方语言资源权利归 Anthropic，不在 MIT 授权范围内。本项目不分发 Claude 应用或修改后的应用主包。
 主语言包：
 https://claude.ai/i18n/zh-Hans.json?v=dc0f674b04d1
 SHA-256: dc0f674b04d17055671f06a5645294352d98780128e944706b5411d53cae038b

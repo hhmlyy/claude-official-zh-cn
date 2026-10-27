@@ -1,5 +1,5 @@
 #!/bin/bash
-# Claude 3.6556.2: register official zh-Hans catalogs in the native language menu.
+# Claude 3.6556.2: official Chinese and native tools for the verified Intel build.
 set -euo pipefail
 
 PACKAGE_DIR="$(cd -- "$(/usr/bin/dirname -- "$0")" && pwd)"
@@ -8,6 +8,7 @@ APP_PATH="/Applications/Claude.app"
 BACKUP_DIR="$HOME/Library/Application Support/ClaudeOfficialZhHans/3.6556.2"
 ACTION="install"
 RESTART="yes"
+NATIVE="auto"
 STAGED=""
 WORK_DIR=""
 REG_ORIGINAL="83537e599f2f6720c2a0a245162e44a5c7431e22872a32ed16ea716e65ded08a"
@@ -63,22 +64,39 @@ while [[ $# -gt 0 ]]; do
     --check) ACTION="check"; shift ;;
     --restore) ACTION="restore"; shift ;;
     --no-restart) RESTART="no"; shift ;;
+    --native) NATIVE="yes"; shift ;;
+    --language-only) NATIVE="no"; shift ;;
+    --prepare) ACTION="prepare"; shift ;;
     --app) [[ $# -ge 2 ]] || fail '--app 缺少路径。'; APP_PATH="$2"; shift 2 ;;
     --backup-dir) [[ $# -ge 2 ]] || fail '--backup-dir 缺少路径。'; BACKUP_DIR="$2"; shift 2 ;;
     --catalog-dir) [[ $# -ge 2 ]] || fail '--catalog-dir 缺少路径。'; CATALOG_DIR="$2"; shift 2 ;;
     -h|--help)
-      printf '%s\n' '注册 Claude 官方中文：重新打开后在 Language → 中文（简体）中选择。' \
+      printf '%s\n' '注册 Claude 官方中文；已适配的 Intel Mac 同时恢复原生电脑控制和内置浏览器。' \
         '--check：只检查，不下载、不修改。  --restore：撤销注册，不需要下载。' \
         '--no-restart：自行退出和重启 Claude。  --app 路径：指定 Claude.app。' \
         '--catalog-dir 路径：指定两份官方 JSON 所在目录。' \
         '--backup-dir 路径：指定原文件备份目录；兼容此前 Mac 脚本的备份。' \
-        '仅适配 3.6556.2。资源修改会影响原签名校验；脚本不重签名。'
+        '--prepare：在副本上准备合并补丁，不退出、不修改正在运行的 Claude。' \
+        '--native：要求安装原生功能；--language-only：仅注册中文。' \
+        '原生功能仅适配 Intel / macOS 26.5.2 / Claude 3.6556.2 的已核验构建，安装后会本地重签名。'
       exit 0 ;;
     *) fail "未知参数：$1" ;;
   esac
 done
 
 [[ "$(/usr/bin/uname -s)" == "Darwin" ]] || fail '仅适用于 macOS。'
+if [[ "$NATIVE" == "yes" || ( "$NATIVE" == "auto" && "$(/usr/bin/uname -m)" == "x86_64" && "$(/usr/bin/sw_vers -productVersion)" == "26.5.2" ) ]]; then
+  if [[ "$ACTION" != "restore" || -f "$BACKUP_DIR/native-x86_64/state.json" ]]; then
+    [[ -f "$PACKAGE_DIR/native_macos.py" && ! -L "$PACKAGE_DIR/native_macos.py" ]] || fail '缺少 native_macos.py，请保留完整源码目录。'
+    command -v python3 >/dev/null || fail '原生功能适配需要 Python 3.9 或更新版本。'
+    export PYTHONDONTWRITEBYTECODE=1
+    if [[ "$RESTART" == "no" ]]; then
+      exec python3 "$PACKAGE_DIR/native_macos.py" "$ACTION" --app "$APP_PATH" --backup-dir "$BACKUP_DIR" --catalog-dir "$CATALOG_DIR" --no-restart
+    fi
+    exec python3 "$PACKAGE_DIR/native_macos.py" "$ACTION" --app "$APP_PATH" --backup-dir "$BACKUP_DIR" --catalog-dir "$CATALOG_DIR"
+  fi
+fi
+[[ "$ACTION" != "prepare" ]] || fail '--prepare 仅用于已适配的 Intel 原生功能。'
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")
 [[ "$VERSION" == "3.6556.2" ]] || fail "只适配 3.6556.2，当前为 $VERSION，未修改。"
 RESOURCES="$APP_PATH/Contents/Resources/ion-dist"
