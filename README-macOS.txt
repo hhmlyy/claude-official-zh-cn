@@ -7,7 +7,7 @@ Claude 官方中文与原生工具 — macOS
 3. 双击 Install-ClaudeZhCN.command，或在终端运行 bash ./Install-ClaudeZhCN.command。
 4. 安装成功后会重新打开 Claude。在账号菜单 → Language → 中文（简体）中选择。
 
-默认应用位置为 /Applications/Claude.app。Intel 和 Apple Silicon 的 macOS 26.5.2 默认同时安装中文与原生工具适配。Release 包内置两种处理器的 Python 运行环境，不需要另行安装 Python；运行时只解压所需架构到临时目录，结束后清理。源码包不含运行环境，需要 Python 3.9 或更新版本。应用和资源必须通过固定文件哈希检查，其他系统版本或构建会停止并显示原因。原生模式检测到 Claude 仍在运行时会停止，不会强制结束任务。
+默认应用位置为 /Applications/Claude.app。Intel 和 Apple Silicon 共用入口，默认安装中文与原生工具适配。安装器不锁定单一 macOS 版本；此 Claude 应用声明最低 macOS 13，电脑控制内置检查要求 macOS 14 或更新版本，后台控制还受 Claude 自身的系统版本条件限制。未实测的系统不能保证功能正常。Release 包内置两种处理器的 Python 运行环境，不需要另行安装 Python；运行时只解压所需架构到临时目录，结束后清理。源码包不含运行环境，需要 Python 3.9 或更新版本。应用和资源必须通过固定文件哈希检查，其他构建会停止并显示原因。原生模式检测到 Claude 仍在运行时会停止，不会强制结束任务。
 
 语言 JSON 优先从 catalogs 读取；缺少时从固定官方地址下载并核验。Release 离线包包含两份原始官方 JSON；GitHub 自动生成的 Source code 压缩包不包含语言资源。
 
