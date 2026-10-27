@@ -1,0 +1,76 @@
+name: macOS Apple Silicon verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [arm64, universal]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified runtime and language resources
+        shell: bash
+        run: |
+          curl -fL --retry 3 -o "$RUNNER_TEMP/python-arm64.tar.gz" 'https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18%2B20261026-aarch64-apple-darwin-install_only_stripped.tar.gz'
+          echo '8392b6ea51d94391befb2c31ebe75463f045d0b69dfcf5e1bb3234e1f5fa3405  '"$RUNNER_TEMP/python-arm64.tar.gz" | shasum -a 256 -c
+          mkdir -p "$RUNNER_TEMP/runtime"
+          tar -xzf "$RUNNER_TEMP/python-arm64.tar.gz" -C "$RUNNER_TEMP/runtime"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/catalogs.zip" 'https://github.com/hhmlyy/claude-official-zh-cn/releases/download/v1.1.0/Claude-ZhCN-macOS-3.6556.2.zip'
+          echo 'a95269ce4985acd70a58e0c4d101d1069b23a2806a3ddb0ecc0d3544a8330702  '"$RUNNER_TEMP/catalogs.zip" | shasum -a 256 -c
+          unzip -q "$RUNNER_TEMP/catalogs.zip" -d "$RUNNER_TEMP/catalogs"
+      - name: Download verified official Claude fixture
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/fixture"
+          if [[ '${{ matrix.fixture }}' == 'arm64' ]]; then
+            curl -fL --retry 3 -o "$RUNNER_TEMP/Claude.zip" 'https://downloads.claude.ai/releases/darwin/arm64/3.6556.2/Claude-20c019a1e61fa5b687616af57d31f97bb3181723.zip'
+            echo 'e30f6df17ec9c064debaadf1f7e7e087e5a94e22e6743d21333f5ca2e2152ddd  '"$RUNNER_TEMP/Claude.zip" | shasum -a 256 -c
+            ditto -x -k "$RUNNER_TEMP/Claude.zip" "$RUNNER_TEMP/fixture"
+          else
+            curl -fL --retry 3 -o "$RUNNER_TEMP/Claude.dmg" 'https://downloads.claude.ai/releases/darwin/universal/3.6556.2/Claude-20c019a1e61fa5b687616af57d31f97bb3181723.dmg'
+            echo 'a1635179eb3574988202d89d6c1929a7a4238d7b302409301b69e81c8ec3efd5  '"$RUNNER_TEMP/Claude.dmg" | shasum -a 256 -c
+            hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/Claude.dmg"
+          fi
+      - name: Verify native installation and restoration on ARM
+        shell: bash
+        env:
+          CLAUDE_NATIVE_HOST_ARCH: arm64
+        run: |
+          export CLAUDE_NATIVE_FIXTURE="$RUNNER_TEMP/fixture/Claude.app"
+          export CLAUDE_NATIVE_CATALOG_DIR="$RUNNER_TEMP/catalogs/Claude-ZhCN-macOS-3.6556.2/catalogs"
+          "$RUNNER_TEMP/runtime/python/bin/python3" -I -B -m unittest discover -s tests -p test_native_macos.py -v
+      - name: Verify packaged launcher on ARM
+        shell: bash
+        run: |
+          package="$RUNNER_TEMP/launcher"
+          test_home="$RUNNER_TEMP/test-home"
+          config="$test_home/Library/Application Support/Claude-3p/configLibrary"
+          mkdir -p "$package/runtime" "$config"
+          cp Install-ClaudeZhCN.command native_macos.py "$package/"
+          cp "$RUNNER_TEMP/python-arm64.tar.gz" "$package/runtime/"
+          cp -R "$RUNNER_TEMP/catalogs/Claude-ZhCN-macOS-3.6556.2/catalogs" "$package/"
+          ditto "$RUNNER_TEMP/fixture/Claude.app" "$package/Claude.app"
+          printf '%s' '{"appliedId":"fixture"}' > "$config/_meta.json"
+          printf '%s' '{"inferenceProvider":"gateway"}' > "$config/fixture.json"
+          if [[ "$(sw_vers -productVersion)" == '26.5.2' ]]; then
+            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+            HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --restore --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          else
+            if result=$(HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" 2>&1); then exit 1; fi
+            [[ "$result" == *'原生补丁仅适配 macOS 26.5.2'* ]]
+          fi
+      - name: Detach universal fixture
+        if: always() && matrix.fixture == 'universal'
+        shell: bash
+        run: hdiutil detach "$RUNNER_TEMP/fixture" || true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude 3.6556.2 / Intel / macOS 26.5.2 的中文与原生工具安装事务。"""
+"""Claude 3.6556.2 / macOS 26.5.2 的中文与原生工具安装事务。"""
 import argparse
 import copy
 import fcntl
@@ -26,6 +26,23 @@ MAIN_HASH = "6e898798943b990e6eefa9209c61d977866b7898f681864f02c8cad3bb691ed5"
 NODE_HASH = "c54403144c391d4fb3b0f88ff948056c994f66df56d3e14923063557e085e04a"
 EXEC_HASH = "ac4e7ad46a19c6cd02e78fc4fdee21d1dbcc820fadd3b627a4631f236a99c0ca"
 PLIST_HASH = "b370a819a9faab39826ff900ceb7d0d0ba081daafe93eed37cd3018e64060d31"
+BUILDS = {
+    SOURCE_HASH: {
+        "architectures": ("x86_64",), "node": NODE_HASH, "exec": EXEC_HASH, "plist": PLIST_HASH,
+    },
+    "d1315bccfdb85cfcd79fcc34f194f3a5154d383bff1518fde95d39e821e3852d": {
+        "architectures": ("x86_64", "arm64"),
+        "node": "301ce0ba38ac3725d5b5833abfaae9c7e453d54fddd509850344f821f2931aa1",
+        "exec": "6dc844c1b12bea0d46f3840a97dbab121aa64bad4710730eed46ef0cce6ac4b5",
+        "plist": "00075ca3f823a0b7731e0591a25f512136ada6d5c208cad1a5dce562b392a276",
+    },
+    "b2dfbbb40325d978dcb7561ad12a6f9bc199f8f46b7d3d2897af74ce8965d68a": {
+        "architectures": ("arm64",),
+        "node": "35d05e0bb1192f8352b9b9c6dfd47cc4865a89498f4f1618a99370e5e052e3a3",
+        "exec": "955991a288be2251ec08015c7eb33bbe77395e982e7c42b9428b012837725639",
+        "plist": "695b59fbf4c4dc65590c94d920e24467d5b928e257261e15e63a833f3d7fb4e8",
+    },
+}
 ANCHOR = "var Hon={"
 GATES = '1291166712:{rule:"forced",value:{enabled:!0}},1346958739:{rule:"forced",value:{major:26,minor:5}},'
 TRACKED = (ASAR, "Contents/Info.plist", "Contents/MacOS/Claude", NODE, REGISTRY,
@@ -88,18 +105,29 @@ def bundle_version(app):
     return info
 
 
+def host_architecture():
+    result = subprocess.run(["/usr/sbin/sysctl", "-n", "hw.optional.arm64"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+    return "arm64" if result.returncode == 0 and result.stdout.strip() == b"1" else platform.machine()
+
+
 def environment():
-    require(sys.platform == "darwin" and platform.machine() == "x86_64" and
-            platform.mac_ver()[0] == "26.5.2", "原生补丁仅核验 Intel / macOS 26.5.2。")
+    architecture = host_architecture()
+    require(sys.platform == "darwin" and architecture in ("x86_64", "arm64") and
+            platform.mac_ver()[0] == "26.5.2", "原生补丁仅适配 macOS 26.5.2 的 Intel 或 Apple Silicon。")
+    return architecture
 
 
 def source(app):
     bundle_version(app)
     require(not app.is_symlink(), "应用不能是符号链接。")
-    require(digest(read(app / ASAR)) == SOURCE_HASH, "Intel 版 ASAR 指纹不符，停止修改。")
-    require(digest(read(app / NODE)) == NODE_HASH, "Intel 原生电脑控制模块指纹不符。")
-    require(digest(read(app / "Contents/MacOS/Claude")) == EXEC_HASH and
-            digest(read(app / "Contents/Info.plist")) == PLIST_HASH, "Intel 主程序或应用配置指纹不符。")
+    build = BUILDS.get(digest(read(app / ASAR)))
+    require(build is not None, "Claude ASAR 指纹不在已适配的构建中，停止修改。")
+    require(host_architecture() in build["architectures"], "Claude 应用与这台 Mac 的处理器不匹配。")
+    require(digest(read(app / NODE)) == build["node"], "原生电脑控制模块指纹不符。")
+    require(digest(read(app / "Contents/MacOS/Claude")) == build["exec"] and
+            digest(read(app / "Contents/Info.plist")) == build["plist"], "主程序或应用配置指纹不符。")
+    return build
 
 
 def verify_signature(app, official=False):
@@ -134,7 +162,7 @@ def main_bytes(raw):
 
 def patched_asar(raw):
     """只在功能表插入两项；其余文件和官方操作检查逐字节保留。"""
-    require(digest(raw) == SOURCE_HASH, "只接受已登记的 Intel 原版 ASAR。")
+    require(digest(raw) in BUILDS, "只接受已登记的官方原版 ASAR。")
     original = main_bytes(raw)
     require(digest(original) == MAIN_HASH, "主进程文件指纹不符。")
     text = original.decode()
@@ -260,7 +288,7 @@ def prepare(args):
         print("合并补丁已安装；无需重新构建。")
         return state
     before = snapshot(args.app)
-    source(args.app)
+    build = source(args.app)
     config(args)
     backup = args.state_dir / "Claude.original.app"
     if not backup.exists():
@@ -272,7 +300,7 @@ def prepare(args):
             verify_signature(candidate, official=True)
             require(snapshot(args.app) == before, "Claude 在准备期间更新了文件。")
             candidate.rename(backup)
-    source(backup)
+    require(source(backup) == build, "现有官方备份属于不同构建，停止以免替换当前版本。")
     verify_signature(backup, official=True)
     with tempfile.TemporaryDirectory(prefix=".build-", dir=str(args.state_dir)) as temp:
         candidate = pathlib.Path(temp) / "Claude.app"
@@ -295,7 +323,7 @@ def prepare(args):
         run("/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime",
             "--entitlements", entitlements_path, candidate)
         verify_signature(candidate)
-        require(digest(read(candidate / NODE)) == NODE_HASH, "原生模块被意外修改。")
+        require(digest(read(candidate / NODE)) == build["node"], "原生模块被意外修改。")
         require(snapshot(args.app) == before, "Claude 在准备期间更新了文件。")
         target = args.state_dir / "Claude.prepared.app"
         if target.exists():
@@ -411,7 +439,7 @@ def check(args):
             prepared(args, state)
             print("核验通过：合并补丁副本已准备，尚未应用。")
         else:
-            print("核验通过：当前 Intel 构建可准备原生功能补丁。")
+            print("核验通过：当前构建可准备原生功能补丁。")
     print("当前 Magpie 配置的官方内置浏览器：" + ("开启" if value.get("builtinBrowserEnabled") is True else "关闭"))
     print("系统权限与模型实际操作能力须另行验证；本检查不代表已获辅助功能或屏幕录制权限。")
 
@@ -427,8 +455,7 @@ def main():
     args = parser.parse_args()
     args.app = args.app.absolute()
     args.backup_dir = args.backup_dir.absolute()
-    args.state_dir = args.backup_dir / "native-x86_64"
-    environment()
+    args.state_dir = args.backup_dir / ("native-" + environment())
     require(args.app.resolve() == args.app and args.backup_dir.resolve() == args.backup_dir,
             "应用或备份路径不能经过符号链接。")
     if args.action == "check":

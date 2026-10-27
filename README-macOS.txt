@@ -1,19 +1,19 @@
 Claude 官方中文与原生工具 — macOS
-仅适配 Claude Desktop 3.6556.2；此包包含中文注册和已核验的 Intel 原生工具适配。
+仅适配 Claude Desktop 3.6556.2；一个包自动识别 Intel 和 Apple Silicon，包含中文注册及原生工具适配。
 
 使用方法
-1. 完整解压 ZIP，保留整个目录，包括 native_macos.py、catalogs 和入口脚本。
+1. 完整解压 ZIP，保留整个目录，包括 native_macos.py、catalogs、runtime 和入口脚本。
 2. 等 Claude 当前任务结束，再正常退出 Claude。
 3. 双击 Install-ClaudeZhCN.command，或在终端运行 bash ./Install-ClaudeZhCN.command。
 4. 安装成功后会重新打开 Claude。在账号菜单 → Language → 中文（简体）中选择。
 
-默认应用位置为 /Applications/Claude.app。Intel x86_64 / macOS 26.5.2 默认同时安装中文与原生工具适配，需要 Python 3.9 或更新版本，无第三方 Python 依赖；其他平台默认只注册中文。所有模式均须通过固定文件哈希检查。原生模式检测到 Claude 仍在运行时会停止，不会强制结束任务。
+默认应用位置为 /Applications/Claude.app。Intel 和 Apple Silicon 的 macOS 26.5.2 默认同时安装中文与原生工具适配。Release 包内置两种处理器的 Python 运行环境，不需要另行安装 Python；运行时只解压所需架构到临时目录，结束后清理。源码包不含运行环境，需要 Python 3.9 或更新版本。应用和资源必须通过固定文件哈希检查，其他系统版本或构建会停止并显示原因。原生模式检测到 Claude 仍在运行时会停止，不会强制结束任务。
 
 语言 JSON 优先从 catalogs 读取；缺少时从固定官方地址下载并核验。Release 离线包包含两份原始官方 JSON；GitHub 自动生成的 Source code 压缩包不包含语言资源。
 
 原生适配只恢复本地功能开关。电脑控制仍需在 Claude 设置中启用、取得系统的辅助功能与屏幕录制权限，并由模型和网关支持相应工具协议。官方操作检查和确认逻辑保持原样。浏览器使用官方内置浏览器，不更改网关地址或密钥。
 
-上述 Intel / macOS 26.5.2 / Claude 3.6556.2 组合已在 Magpie 下实机验证：辅助功能与屏幕录制均已授予，Claude 自带电脑控制通过界面点击计算 1+2，截图确认结果为 3；内置浏览器成功打开并读取 https://example.com。结果仅覆盖此构建及测试时的模型、网关组合。安装、回滚、重复安装、完整还原与配置保护的 6 项自动测试也已通过。
+上述 Intel / macOS 26.5.2 / Claude 3.6556.2 组合已在 Magpie 下实机验证：辅助功能与屏幕录制均已授予，Claude 自带电脑控制通过界面点击计算 1+2，截图确认结果为 3；内置浏览器成功打开并读取 https://example.com。结果仅覆盖此构建及测试时的模型、网关组合。Apple Silicon 的官方应用文件已在隔离副本验证安装、回滚和还原；实际电脑控制与浏览器操作仍需在 Apple Silicon 机器上验证。
 
 入口未使用 Apple 开发者证书签名或公证。如果系统拦截首次打开，请查看 Apple 的官方说明：
 https://support.apple.com/zh-cn/102445
@@ -31,7 +31,7 @@ bash ./Install-ClaudeZhCN.command --prepare
 bash ./Install-ClaudeZhCN.command --restore
 只检查当前安装状态：
 bash ./Install-ClaudeZhCN.command --check
-原生模式恢复具有官方签名的完整应用和安装前的浏览器开关，中文一并撤销。完整应用备份和安装记录保存在下列目录中的 native-x86_64：
+原生模式恢复具有官方签名的完整应用和安装前的浏览器开关，中文一并撤销。完整应用备份和安装记录保存在下列目录中的 native-x86_64 或 native-arm64：
 ~/Library/Application Support/ClaudeOfficialZhHans/3.6556.2/
 
 仅执行原有中文注册：
