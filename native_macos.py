@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude 3.6556.2 / macOS 26.5.2 的中文与原生工具安装事务。"""
+"""Claude 3.6556.2 的中文与原生工具安装事务。"""
 import argparse
 import copy
 import fcntl
@@ -113,8 +113,12 @@ def host_architecture():
 
 def environment():
     architecture = host_architecture()
-    require(sys.platform == "darwin" and architecture in ("x86_64", "arm64") and
-            platform.mac_ver()[0] == "26.5.2", "原生补丁仅适配 macOS 26.5.2 的 Intel 或 Apple Silicon。")
+    require(sys.platform == "darwin" and architecture in ("x86_64", "arm64"),
+            "原生补丁仅适用于 Intel 或 Apple Silicon 的 macOS。")
+    major = platform.mac_ver()[0].split(".", 1)[0]
+    if major.isdecimal() and int(major) < 14:
+        print("提示：此 Claude 构建的原生电脑控制需要 macOS 14 或更新版本；"
+              "中文与内置浏览器仍取决于 Claude 和系统支持。", file=sys.stderr)
     return architecture
 
 
