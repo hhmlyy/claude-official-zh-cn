@@ -1,5 +1,6 @@
 """原生补丁：真实 ASAR 保真、配置隔离、安装失败回滚与官方原版恢复。"""
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -23,6 +24,26 @@ class ArchitectureTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("CLAUDE_NATIVE_HOST_ARCH"), "未指定真实测试机架构")
     def test_actual_host_architecture(self):
         self.assertEqual(native.host_architecture(), os.environ["CLAUDE_NATIVE_HOST_ARCH"])
+
+    def test_macos_versions_are_not_locked_to_one_release(self):
+        for version in ("13.7.6", "14.8", "15.7", "26.5.2", "27.0"):
+            with self.subTest(version=version), \
+                    mock.patch.object(native.sys, "platform", "darwin"), \
+                    mock.patch.object(native, "host_architecture", return_value="arm64"), \
+                    mock.patch.object(native.platform, "mac_ver", return_value=(version, (), "arm64")), \
+                    mock.patch.object(native.sys, "stderr", new_callable=io.StringIO) as warning:
+                self.assertEqual(native.environment(), "arm64")
+                self.assertEqual("macOS 14" in warning.getvalue(), version.startswith("13."))
+
+    def test_unsupported_platform_or_architecture_is_rejected(self):
+        with mock.patch.object(native.sys, "platform", "linux"), \
+                mock.patch.object(native, "host_architecture", return_value="x86_64"):
+            with self.assertRaisesRegex(ValueError, "macOS"):
+                native.environment()
+        with mock.patch.object(native.sys, "platform", "darwin"), \
+                mock.patch.object(native, "host_architecture", return_value="unsupported"):
+            with self.assertRaisesRegex(ValueError, "macOS"):
+                native.environment()
 
 
 class BrowserConfigTests(unittest.TestCase):
