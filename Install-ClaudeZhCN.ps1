@@ -9,15 +9,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$script:Version = '3.6556.2'
-$script:RegistryFile = 'assets/v1/shared-52-uHFNjl7C.js'
-$script:OriginalHash = '83537e599f2f6720c2a0a245162e44a5c7431e22872a32ed16ea716e65ded08a'
-$script:RegisteredHash = 'f556db8f04ce27ffbe7b7113ff6fe7169274a9e8a4f083ca202dded325ecf3d4'
-$script:EnglishFiles = @{
-    'assets/v1/shared-50-DopKwmK0.js' = '371cdd50d64068beb78178a0eb988ace10eb077f79e72f7b915688c2d68e418d'
-    'i18n/en-US.json' = '58c827a85e1ab35f8cd8934db9521842e169505432b407c3eaf129c322e7aa40'
-    'i18n/dynamic/en-US.json' = '79e1211bbad7a95915bd982f97e36757e8c54cabe00130a6c673e6796d85cee9'
-}
+# The old hash is used only to find backups created by previous installers.
+$script:LegacyOriginalHash = '83537e599f2f6720c2a0a245162e44a5c7431e22872a32ed16ea716e65ded08a'
 $script:Catalogs = @(
     @{
         Name = 'zh-Hans.official.json'; Target = 'i18n/zh-Hans.json'
@@ -57,16 +50,63 @@ function Assert-PlainDirectory([string]$Path) {
     }
 }
 
+function Get-BytesSha256([byte[]]$Bytes) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+
+function Get-RegistrationInfo([string]$Path) {
+    Assert-RegularFile $Path
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $text = [Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+    $marker = "`n/* ClaudeOfficialZhHans: register the official Chinese catalogs. */`n"
+    $position = $text.IndexOf($marker, [StringComparison]::Ordinal)
+    $originalText = if ($position -ge 0) { $text.Substring(0, $position) } else { $text }
+    $prefix = '(?<name>[A-Za-z_$][\w$]*)=\[(?<list>"en-US"(?:,"[A-Za-z0-9-]+")+)\];function [A-Za-z_$][\w$]*\('
+    $first = [regex]::Matches($originalText, $prefix + '[A-Za-z_$][\w$]*\)\{return \k<name>\.includes\(')
+    $second = [regex]::Matches($originalText, $prefix + '[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*=\k<name>\)\{let [A-Za-z_$][\w$]*=new Map;')
+    if ($first.Count -eq 0 -or $second.Count -eq 0) { return $null }
+    if ($first.Count -ne 1 -or $second.Count -ne 1 -or
+        $first[0].Groups['list'].Value -cne $second[0].Groups['list'].Value -or
+        $first[0].Groups['list'].Value -notmatch '"ja-JP"' -or
+        $first[0].Groups['list'].Value -match '"zh-Hans"' -or
+        $first[0].Groups['name'].Value -ceq $second[0].Groups['name'].Value -or
+        -not $originalText.Contains('/i18n/dynamic/') -or $originalText.Contains('ClaudeOfficialZhHans')) {
+        throw '语言注册结构不匹配，未修改。'
+    }
+    $tail = $marker
+    foreach ($match in @($first[0], $second[0])) {
+        $name = $match.Groups['name'].Value
+        $tail += ('if (!{0}.includes("zh-Hans")) {0}.push("zh-Hans");' -f $name) + "`n"
+    }
+    if ($position -ge 0 -and $text.Substring($position) -cne $tail) { throw '语言注册标记已被修改。' }
+    $original = [Text.Encoding]::UTF8.GetBytes($originalText)
+    $registered = [byte[]]($original + [Text.Encoding]::ASCII.GetBytes($tail))
+    return [pscustomobject]@{
+        OriginalHash = Get-BytesSha256 $original
+        RegisteredHash = Get-BytesSha256 $registered
+        RegistryHash = Get-BytesSha256 $bytes
+        Registered = ($position -ge 0)
+        RegisteredBytes = $registered
+    }
+}
+
 function Get-LanguageStatus([string]$IonDist) {
     Assert-PlainDirectory $IonDist
-    foreach ($relative in $script:EnglishFiles.Keys) {
-        Assert-Hash (Join-Path $IonDist $relative) $script:EnglishFiles[$relative]
+    foreach ($relative in @('i18n/en-US.json', 'i18n/dynamic/en-US.json')) {
+        $path = Join-Path $IonDist $relative
+        Assert-PlainDirectory (Split-Path -Parent $path)
+        Assert-RegularFile $path
     }
-    $registry = Join-Path $IonDist $script:RegistryFile
-    Assert-RegularFile $registry
-    $hash = Get-Sha256 $registry
-    if ($hash -notin @($script:OriginalHash, $script:RegisteredHash)) {
-        throw '语言注册文件不是已适配的版本，未修改。'
+    $assets = Join-Path $IonDist 'assets/v1'
+    Assert-PlainDirectory $assets
+    $registries = @(Get-ChildItem -LiteralPath $assets -Filter 'shared-*.js' -File -Force | ForEach-Object {
+        $info = Get-RegistrationInfo $_.FullName
+        if ($null -ne $info) { [pscustomobject]@{ Path = $_.FullName; Info = $info } }
+    })
+    if ($registries.Count -ne 1) {
+        throw '无法唯一定位兼容的语言注册结构，未修改。'
     }
     $count = 0
     foreach ($catalog in $script:Catalogs) {
@@ -74,9 +114,14 @@ function Get-LanguageStatus([string]$IonDist) {
         Assert-PlainDirectory (Split-Path -Parent $target)
         if (Test-Path -LiteralPath $target) { Assert-Hash $target $catalog.Hash; $count++ }
     }
+    $info = $registries[0].Info
     return [pscustomobject]@{
-        RegistryHash = $hash
-        Installed = ($hash -eq $script:RegisteredHash -and $count -eq 2)
+        RegistryPath = $registries[0].Path
+        RegistryHash = $info.RegistryHash
+        OriginalHash = $info.OriginalHash
+        RegisteredHash = $info.RegisteredHash
+        Registered = $info.Registered
+        Installed = ($info.Registered -and $count -eq 2)
     }
 }
 
@@ -105,9 +150,10 @@ function Find-IonDist([string]$Path) {
         }
     }
     $found = @($candidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $_ $script:RegistryFile) -PathType Leaf
+        (Test-Path -LiteralPath (Join-Path $_ 'i18n/en-US.json') -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $_ 'assets/v1') -PathType Container)
     } | Select-Object -Unique)
-    if ($found.Count -eq 0) { throw "找不到已适配的 Claude $script:Version 资源。可用 -ResourcesPath 指定 ion-dist 目录。" }
+    if ($found.Count -eq 0) { throw '找不到可识别的 Claude ion-dist 目录。可用 -ResourcesPath 指定；打包为 ASAR 的资源暂不支持。' }
     if ($found.Count -gt 1) { throw "发现多个安装目录，请用 -ResourcesPath 指定一个：`n$($found -join "`n")" }
     return (Get-Item -LiteralPath $found[0]).FullName.TrimEnd([char[]]'\/')
 }
@@ -116,8 +162,8 @@ function Assert-Writable([string]$IonDist) {
     if ($IonDist -match '[\\/]WindowsApps[\\/]') {
         throw '此安装位于受保护的 WindowsApps/MSIX 目录，本版不支持原位修改。未修改权限或应用文件。'
     }
-    foreach ($relative in @($script:RegistryFile, 'i18n/en-US.json', 'i18n/dynamic/en-US.json')) {
-        $path = Join-Path $IonDist $relative
+    $status = Get-LanguageStatus $IonDist
+    foreach ($path in @($status.RegistryPath, (Join-Path $IonDist 'i18n/en-US.json'), (Join-Path $IonDist 'i18n/dynamic/en-US.json'))) {
         $handle = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
         $handle.Dispose()
     }
@@ -143,18 +189,10 @@ function Copy-Verified([string]$Source, [string]$Target, [string]$Hash) {
 }
 
 function New-RegisteredBundle([string]$Original, [string]$Destination) {
-    Assert-Hash $Original $script:OriginalHash
-    $tail = "`n/* ClaudeOfficialZhHans: register the official Chinese catalogs. */`n" +
-        'if (!ay.includes("zh-Hans")) ay.push("zh-Hans");' + "`n" +
-        'if (!by.includes("zh-Hans")) by.push("zh-Hans");' + "`n"
-    $stream = [IO.File]::Create($Destination)
-    try {
-        $bytes = [IO.File]::ReadAllBytes($Original)
-        $stream.Write($bytes, 0, $bytes.Length)
-        $bytes = [Text.Encoding]::ASCII.GetBytes($tail)
-        $stream.Write($bytes, 0, $bytes.Length)
-    } finally { $stream.Dispose() }
-    Assert-Hash $Destination $script:RegisteredHash
+    $info = Get-RegistrationInfo $Original
+    if ($null -eq $info -or $info.Registered) { throw '原始语言注册结构不匹配，未修改。' }
+    [IO.File]::WriteAllBytes($Destination, $info.RegisteredBytes)
+    Assert-Hash $Destination $info.RegisteredHash
 }
 
 function Get-OfficialCatalogs([string]$Directory, [string]$Stage) {
@@ -185,11 +223,11 @@ function Invoke-LanguageChange(
     [ValidateSet('Install', 'Restore')][string]$Operation
 ) {
     $status = Get-LanguageStatus $IonDist
-    $registry = Join-Path $IonDist $script:RegistryFile
+    $registry = $status.RegistryPath
     $original = Join-Path $Backup 'registry.original.js'
     $stateFile = Join-Path $Backup 'state.json'
     if ($Operation -eq 'Install' -and $status.Installed) { Write-Host '官方中文已安装，无需重复修改。'; return }
-    if ($Operation -eq 'Restore' -and $status.RegistryHash -eq $script:OriginalHash -and -not (Test-Path -LiteralPath $stateFile)) {
+    if ($Operation -eq 'Restore' -and -not $status.Registered -and -not (Test-Path -LiteralPath $stateFile)) {
         Write-Host '未发现本工具的安装记录，无需还原。'; return
     }
     Assert-PlainDirectory (Split-Path -Parent $registry)
@@ -197,20 +235,20 @@ function Invoke-LanguageChange(
     if (Test-Path -LiteralPath $stateFile) {
         Assert-RegularFile $stateFile
         $state = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($state.IonDist -ne $IonDist -or $state.Version -ne $script:Version -or
+        if ($state.IonDist -ne $IonDist -or $state.Version -notin @('3.6556.2', 'structural-v1') -or
             $state.HadMain -isnot [bool] -or $state.HadDynamic -isnot [bool]) { throw '备份记录不匹配，未修改。' }
-        Assert-Hash $original $script:OriginalHash
+        Assert-Hash $original $status.OriginalHash
     } else {
-        if ($Operation -eq 'Restore' -or $status.RegistryHash -ne $script:OriginalHash) { throw '缺少原始文件备份，未修改。' }
+        if ($Operation -eq 'Restore' -or $status.Registered) { throw '缺少原始文件备份，未修改。' }
         $state = [pscustomobject]@{
-            Version = $script:Version; IonDist = $IonDist
+            Version = 'structural-v1'; IonDist = $IonDist
             HadMain = (Test-Path -LiteralPath (Join-Path $IonDist $script:Catalogs[0].Target))
             HadDynamic = (Test-Path -LiteralPath (Join-Path $IonDist $script:Catalogs[1].Target))
         }
         $null = New-Item -ItemType Directory -Path $Backup -Force
         Assert-PlainDirectory $Backup
-        if (Test-Path -LiteralPath $original) { Assert-Hash $original $script:OriginalHash }
-        else { Copy-Verified $registry $original $script:OriginalHash }
+        if (Test-Path -LiteralPath $original) { Assert-Hash $original $status.OriginalHash }
+        else { Copy-Verified $registry $original $status.OriginalHash }
         [IO.File]::WriteAllText($stateFile, ($state | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     }
     if ($Operation -eq 'Install') { New-RegisteredBundle $original (Join-Path $Stage 'registered.js') }
@@ -227,7 +265,7 @@ function Invoke-LanguageChange(
         })
     }
     $bundleSource = if ($Operation -eq 'Install') { Join-Path $Stage 'registered.js' } else { $original }
-    $bundleHash = if ($Operation -eq 'Install') { $script:RegisteredHash } else { $script:OriginalHash }
+    $bundleHash = if ($Operation -eq 'Install') { $status.RegisteredHash } else { $status.OriginalHash }
     $changes.Add([pscustomobject]@{ Target = $registry; Source = $bundleSource; Hash = $bundleHash; Delete = $false })
     $undo = [Collections.Generic.List[object]]::new()
     try {
@@ -278,10 +316,10 @@ try {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw '入口脚本仅支持 Windows。' }
     $ionDist = Find-IonDist $ResourcesPath
     $status = Get-LanguageStatus $ionDist
-    Write-Host "Claude $script:Version 资源校验通过：$ionDist"
+    Write-Host "Claude 语言资源结构校验通过：$ionDist"
     if ($Action -eq 'Check') {
         if ($status.Installed) { Write-Host '状态：官方中文已完整注册。' }
-        else { Write-Host '状态：语言资源版本匹配，尚未完整注册。' }
+        else { Write-Host '状态：语言资源结构匹配，尚未完整注册。' }
         if ($ionDist -match '[\\/]WindowsApps[\\/]') { Write-Host '安装类型：受保护的 MSIX，本版不支持原位修改。' }
         exit 0
     }
@@ -294,7 +332,12 @@ try {
     $digest = [Security.Cryptography.SHA256]::Create()
     try { $pathKey = ([BitConverter]::ToString($digest.ComputeHash([Text.Encoding]::UTF8.GetBytes($ionDist.ToLowerInvariant())))).Replace('-', '').Substring(0, 16) }
     finally { $digest.Dispose() }
-    $backup = Join-Path $env:LOCALAPPDATA "ClaudeOfficialZhHans/$script:Version/$pathKey"
+    $legacyBackup = Join-Path $env:LOCALAPPDATA "ClaudeOfficialZhHans/3.6556.2/$pathKey"
+    if ($status.OriginalHash -eq $script:LegacyOriginalHash -and (Test-Path -LiteralPath (Join-Path $legacyBackup 'state.json'))) {
+        $backup = $legacyBackup
+    } else {
+        $backup = Join-Path $env:LOCALAPPDATA "ClaudeOfficialZhHans/by-content/$pathKey/$($status.OriginalHash)"
+    }
     Invoke-LanguageChange $ionDist $backup $stage $Action
     exit 0
 } catch {

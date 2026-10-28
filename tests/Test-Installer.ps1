@@ -13,6 +13,14 @@ $parseErrors = $null
 $null = [Management.Automation.Language.Parser]::ParseFile($installer, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
 . $installer -CatalogDirectory $CatalogDirectory
+$script:RegistryFile = 'assets/v1/shared-52-uHFNjl7C.js'
+$script:OriginalHash = '83537e599f2f6720c2a0a245162e44a5c7431e22872a32ed16ea716e65ded08a'
+$script:RegisteredHash = 'f556db8f04ce27ffbe7b7113ff6fe7169274a9e8a4f083ca202dded325ecf3d4'
+$script:EnglishFiles = @{
+    'assets/v1/shared-50-DopKwmK0.js' = '371cdd50d64068beb78178a0eb988ace10eb077f79e72f7b915688c2d68e418d'
+    'i18n/en-US.json' = '58c827a85e1ab35f8cd8934db9521842e169505432b407c3eaf129c322e7aa40'
+    'i18n/dynamic/en-US.json' = '79e1211bbad7a95915bd982f97e36757e8c54cabe00130a6c673e6796d85cee9'
+}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $workspace = Join-Path ([IO.Path]::GetTempPath()) ('claude-zh-test-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $workspace
@@ -73,16 +81,24 @@ try {
     Copy-Verified $savedOriginal $original $script:OriginalHash
     Assert-True ((Get-Sha256 $original) -eq $script:OriginalHash) 'Restore original bytes exactly'
 
-    [IO.File]::AppendAllText($original, 'unknown version')
+    [IO.File]::AppendAllText($original, "`n/* ClaudeOfficialZhHans: damaged registration */")
     $before = Get-Sha256 $original
-    Assert-Fails { Get-LanguageStatus $root } 'Reject an unknown application bundle'
-    Assert-True ((Get-Sha256 $original) -eq $before) 'Version rejection leaves files unchanged'
+    Assert-Fails { Get-LanguageStatus $root } 'Reject an unrecognized registration marker'
+    Assert-True ((Get-Sha256 $original) -eq $before) 'Rejected registration leaves files unchanged'
     Copy-Verified $savedOriginal $original $script:OriginalHash
     $main = Join-Path $root 'i18n/zh-Hans.json'
     [IO.File]::WriteAllText($main, '{}')
     Assert-Fails { Get-LanguageStatus $root } 'Reject an existing unknown Chinese catalog'
     Assert-True ([IO.File]::ReadAllText($main) -eq '{}') 'Unknown catalog is not overwritten'
     Remove-Item -LiteralPath $main
+
+    $otherBuild = New-Fixture 'other-build'
+    $oldRegistry = Join-Path $otherBuild $script:RegistryFile
+    $otherRegistry = Join-Path $otherBuild 'assets/v1/shared-other-build.js'
+    Move-Item -LiteralPath $oldRegistry -Destination $otherRegistry
+    [IO.File]::AppendAllText($otherRegistry, "`n/* another compatible build */`n")
+    $otherHash = Get-Sha256 $otherRegistry
+    Assert-True ((Get-LanguageStatus $otherBuild).OriginalHash -eq $otherHash) 'Find a compatible registration in a renamed, changed bundle'
 
     if ($CatalogDirectory) {
         # Use real official translations supplied locally, never synthetic replacements.
@@ -100,6 +116,24 @@ try {
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $root 'i18n/dynamic/zh-Hans.json'))) 'Restore removes the introduced dynamic catalog'
         Invoke-LanguageChange $root $backup (New-Stage) Restore
         Assert-True ((Get-LanguageStatus $root).RegistryHash -eq $script:OriginalHash) 'Repeated restore is safe'
+
+        $stage = New-Stage
+        Get-OfficialCatalogs $CatalogDirectory $stage
+        Invoke-LanguageChange $root $backup $stage Install
+        $stateFile = Join-Path $backup 'state.json'
+        $state = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $state.Version = '3.6556.2'
+        [IO.File]::WriteAllText($stateFile, ($state | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        Invoke-LanguageChange $root $backup (New-Stage) Restore
+        Assert-True ((Get-LanguageStatus $root).RegistryHash -eq $script:OriginalHash) 'Restore accepts the legacy backup format'
+
+        $stage = New-Stage
+        Get-OfficialCatalogs $CatalogDirectory $stage
+        $backup = Join-Path $workspace 'backup-other-build'
+        Invoke-LanguageChange $otherBuild $backup $stage Install
+        Assert-True (Get-LanguageStatus $otherBuild).Installed 'Install with a different bundle hash'
+        Invoke-LanguageChange $otherBuild $backup (New-Stage) Restore
+        Assert-True ((Get-Sha256 $otherRegistry) -eq $otherHash) 'Restore the changed bundle exactly'
 
         $preserved = New-Fixture 'preserve-existing'
         $stage = New-Stage
