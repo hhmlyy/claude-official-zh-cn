@@ -46,6 +46,48 @@ class ArchitectureTests(unittest.TestCase):
                 native.environment()
 
 
+class FrameworkIntegrityTests(unittest.TestCase):
+    def test_universal_digest_is_updated_and_mismatches_fail_closed(self):
+        original = {"ElectronAsarIntegrity": {
+            "Resources/ion-dist.asar": {"algorithm": "SHA256", "hash": "1" * 64},
+            "Resources/app.asar": {"algorithm": "SHA256", "hash": "0" * 64}}}
+        updated = {"ElectronAsarIntegrity": {
+            "Resources/app.asar": {"algorithm": "SHA256", "hash": "2" * 64},
+            "Resources/ion-dist.asar": {"algorithm": "SHA256", "hash": "1" * 64}}}
+        old_digest = bytes.fromhex("1d0353c4a11e58a606fae70a92ac97903fddf53f426ffed57165327ef704fc52")
+        new_digest = bytes.fromhex("9911ca9d2705c9f3f7a6573b93e380e613ce5a3e27a03f391090c083d1857f94")
+        sentinel = b"AGbevlPCksUGKNL8TSn7wGmJEuJsXb2A"
+        old_slot, new_slot = b"\x01\x01" + old_digest, b"\x01\x01" + new_digest
+        with tempfile.TemporaryDirectory(prefix="claude-digest-test-") as temp:
+            app = pathlib.Path(temp)
+            framework = app / native.FRAMEWORK
+            framework.parent.mkdir(parents=True)
+            baseline = b"first" + sentinel + old_slot + b"second" + sentinel + old_slot + b"end"
+            framework.write_bytes(baseline)
+            with mock.patch.object(native, "run", return_value=types.SimpleNamespace(stdout=b"x86_64 arm64")):
+                self.assertTrue(native.update_framework_digest(app, original, updated))
+                self.assertEqual(framework.read_bytes(), baseline.replace(old_slot, new_slot))
+                bad = baseline[:-1] + b"x"
+                bad = bad.replace(old_slot, b"\x01\x01" + b"x" * 32, 1)
+                framework.write_bytes(bad)
+                with self.assertRaisesRegex(ValueError, "与原始应用不一致"):
+                    native.update_framework_digest(app, original, updated)
+                self.assertEqual(framework.read_bytes(), bad)
+                disabled = b"first" + sentinel + bytes(34) + b"second" + sentinel + bytes(34)
+                framework.write_bytes(disabled)
+                self.assertFalse(native.update_framework_digest(app, original, updated))
+                self.assertEqual(framework.read_bytes(), disabled)
+
+    def test_framework_without_digest_is_unchanged(self):
+        with tempfile.TemporaryDirectory(prefix="claude-digest-test-") as temp:
+            app = pathlib.Path(temp)
+            framework = app / native.FRAMEWORK
+            framework.parent.mkdir(parents=True)
+            framework.write_bytes(b"no embedded digest")
+            self.assertFalse(native.update_framework_digest(app, {}, {}))
+            self.assertEqual(framework.read_bytes(), b"no embedded digest")
+
+
 class LanguageRegistrationTests(unittest.TestCase):
     def test_variable_names_are_discovered_and_registration_is_checked(self):
         original = (b'var Ab=["en-US","ja-JP"];function test(e){return Ab.includes(e)}'
@@ -118,6 +160,45 @@ class BrowserConfigTests(unittest.TestCase):
         native.MANAGED_POLICY.touch()
         with self.assertRaisesRegex(ValueError, "组织管理策略"):
             native.browser(self.args)
+
+
+class RestoreWithoutConfigTests(unittest.TestCase):
+    def test_missing_config_is_safe_only_when_install_did_not_change_it(self):
+        for already_enabled in (True, False):
+            with self.subTest(already_enabled=already_enabled), \
+                    tempfile.TemporaryDirectory(prefix="claude-restore-test-") as temp:
+                root = pathlib.Path(temp).resolve()
+                app, state_dir = root / "Claude.app", root / "state"
+                backup = state_dir / "Claude.original.app"
+                app.mkdir()
+                backup.mkdir(parents=True)
+                (app / "marker").write_text("installed")
+                (backup / "marker").write_text("original")
+                state = {"schema": 1, "app": str(app), "phase": "installed",
+                         "installed": native.snapshot(app, ["marker"]),
+                         "original": native.snapshot(backup, ["marker"]),
+                         "browser": {"id": "fixture", "present": already_enabled,
+                                     "value": True if already_enabled else None}}
+                native.save(state_dir / "state.json", state)
+                args = types.SimpleNamespace(app=app, state_dir=state_dir,
+                                             config_dir=root / "missing-config", no_restart=True)
+
+                def copy_app(command, source, destination):
+                    self.assertEqual(command, "/usr/bin/ditto")
+                    shutil.copytree(source, destination)
+
+                with mock.patch.object(native, "processes", return_value=[]), \
+                        mock.patch.object(native, "verify_signature"), \
+                        mock.patch.object(native, "run", side_effect=copy_app):
+                    if already_enabled:
+                        native.restore(args)
+                        self.assertEqual((app / "marker").read_text(), "original")
+                        self.assertEqual(native.load_state(args)["phase"], "restored")
+                    else:
+                        with self.assertRaisesRegex(ValueError, "文件缺失"):
+                            native.restore(args)
+                        self.assertEqual((app / "marker").read_text(), "installed")
+                        self.assertEqual(native.load_state(args)["phase"], "installed")
 
 
 @unittest.skipUnless(FIXTURE, "设置 CLAUDE_NATIVE_FIXTURE 指向官方应用副本")
