@@ -28,9 +28,10 @@ jobs:
           echo '8392b6ea51d94391befb2c31ebe75463f045d0b69dfcf5e1bb3234e1f5fa3405  '"$RUNNER_TEMP/python-arm64.tar.gz" | shasum -a 256 -c
           mkdir -p "$RUNNER_TEMP/runtime"
           tar -xzf "$RUNNER_TEMP/python-arm64.tar.gz" -C "$RUNNER_TEMP/runtime"
-          curl -fL --retry 3 -o "$RUNNER_TEMP/catalogs.zip" 'https://github.com/hhmlyy/claude-official-zh-cn/releases/download/v1.1.0/Claude-ZhCN-macOS-3.6556.2.zip'
-          echo 'a95269ce4985acd70a58e0c4d101d1069b23a2806a3ddb0ecc0d3544a8330702  '"$RUNNER_TEMP/catalogs.zip" | shasum -a 256 -c
-          unzip -q "$RUNNER_TEMP/catalogs.zip" -d "$RUNNER_TEMP/catalogs"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/catalogs.zip" 'https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-Windows.zip'
+          unzip -j -q "$RUNNER_TEMP/catalogs.zip" '*/catalogs/zh-Hans.official.json' '*/catalogs/zh-Hans.dynamic.official.json' -d "$RUNNER_TEMP/catalogs"
+          echo 'dc0f674b04d17055671f06a5645294352d98780128e944706b5411d53cae038b  '"$RUNNER_TEMP/catalogs/zh-Hans.official.json" | shasum -a 256 -c
+          echo '8121dfdeb01237ec4b46a9d252d777da2ee2c5edcf35b885a76fc82810c09fb4  '"$RUNNER_TEMP/catalogs/zh-Hans.dynamic.official.json" | shasum -a 256 -c
       - name: Download verified official Claude fixture
         shell: bash
         run: |
@@ -50,7 +51,7 @@ jobs:
           CLAUDE_NATIVE_HOST_ARCH: arm64
         run: |
           export CLAUDE_NATIVE_FIXTURE="$RUNNER_TEMP/fixture/Claude.app"
-          export CLAUDE_NATIVE_CATALOG_DIR="$RUNNER_TEMP/catalogs/Claude-ZhCN-macOS-3.6556.2/catalogs"
+          export CLAUDE_NATIVE_CATALOG_DIR="$RUNNER_TEMP/catalogs"
           "$RUNNER_TEMP/runtime/python/bin/python3" -I -B -m unittest discover -s tests -p test_native_macos.py -v
       - name: Verify packaged launcher on ARM
         shell: bash
@@ -61,7 +62,7 @@ jobs:
           mkdir -p "$package/runtime" "$config"
           cp Install-ClaudeZhCN.command native_macos.py "$package/"
           cp "$RUNNER_TEMP/python-arm64.tar.gz" "$package/runtime/"
-          cp -R "$RUNNER_TEMP/catalogs/Claude-ZhCN-macOS-3.6556.2/catalogs" "$package/"
+          cp -R "$RUNNER_TEMP/catalogs" "$package/"
           ditto "$RUNNER_TEMP/fixture/Claude.app" "$package/Claude.app"
           printf '%s' '{"appliedId":"fixture"}' > "$config/_meta.json"
           printf '%s' '{"inferenceProvider":"gateway"}' > "$config/fixture.json"
