@@ -5,6 +5,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import mmap
 import os
 import pathlib
 import platform
@@ -19,9 +20,14 @@ import tempfile
 ASAR = "Contents/Resources/app.asar"
 ION_ASAR = "Contents/Resources/ion-dist.asar"
 NODE = "Contents/Resources/app.asar.unpacked/node_modules/@ant/claude-swift/build/Release/computer_use.node"
+FRAMEWORK = "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
 REGISTRY = "Contents/Resources/ion-dist/assets/v1/shared-52-uHFNjl7C.js"
 GATES = '1291166712:{rule:"forced",value:{enabled:!0}},1346958739:{rule:"forced",value:{major:26,minor:5}},'
-TRACKED = (ASAR, "Contents/Info.plist", "Contents/MacOS/Claude", NODE, REGISTRY,
+TRACKED = (ASAR, "Contents/Info.plist", "Contents/MacOS/Claude", NODE, REGISTRY, FRAMEWORK,
+           "Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper",
+           "Contents/Frameworks/Claude Helper (GPU).app/Contents/MacOS/Claude Helper (GPU)",
+           "Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)",
+           "Contents/Frameworks/Claude Helper (Plugin).app/Contents/MacOS/Claude Helper (Plugin)",
            "Contents/Resources/ion-dist/i18n/en-US.json",
            "Contents/Resources/ion-dist/i18n/dynamic/en-US.json",
            "Contents/Resources/ion-dist/i18n/zh-Hans.json",
@@ -53,12 +59,21 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def file_digest(path):
+    require(path.is_file() and not path.is_symlink(), "文件缺失或是符号链接：" + str(path))
+    result = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            result.update(block)
+    return result.hexdigest()
+
+
 def snapshot(app, names=None):
     if names is None:
         names = set(TRACKED) | {ION_ASAR}
         assets = app / "Contents/Resources/ion-dist/assets/v1"
         names.update(str(path.relative_to(app)) for path in assets.glob("shared-*.js"))
-    return {name: digest(read(app / name)) if (app / name).exists() else None for name in names}
+    return {name: file_digest(app / name) if (app / name).exists() else None for name in names}
 
 
 def matches_snapshot(app, expected):
@@ -128,6 +143,65 @@ def verify_signature(app, official=False):
     if official:
         result = run("/usr/bin/codesign", "-dvv", app)
         require(b"TeamIdentifier=Q6L2SF6YDW" in result.stderr, "备份不是官方签名的应用。")
+
+
+def integrity_digest(info):
+    entries = info.get("ElectronAsarIntegrity")
+    require(isinstance(entries, dict) and entries, "缺少 ASAR 完整性信息。")
+    result = hashlib.sha256()
+    for name, entry in sorted(entries.items()):
+        require(isinstance(name, str) and name.isascii() and isinstance(entry, dict) and
+                entry.get("algorithm") == "SHA256" and isinstance(entry.get("hash"), str) and
+                re.fullmatch(r"[0-9a-f]{64}", entry["hash"]), "ASAR 完整性信息格式不支持。")
+        result.update((name + entry["algorithm"] + entry["hash"]).encode("ascii"))
+    return result.digest()
+
+
+def update_framework_digest(app, original_info, updated_info):
+    path = app / FRAMEWORK
+    require(path.is_file() and not path.is_symlink(), "Electron 框架文件缺失或是符号链接。")
+    sentinel = b"AGbevlPCksUGKNL8TSn7wGmJEuJsXb2A"
+    with path.open("r+b") as handle, mmap.mmap(handle.fileno(), 0) as data:
+        positions = []
+        offset = data.find(sentinel)
+        while offset >= 0:
+            positions.append(offset + len(sentinel))
+            offset = data.find(sentinel, offset + len(sentinel))
+        if not positions:
+            return False
+        architectures = run("/usr/bin/lipo", "-archs", path).stdout.decode().split()
+        require(len(positions) == len(architectures) and all(pos + 34 <= len(data) for pos in positions),
+                "Electron 完整性摘要的位置异常。")
+        slots = [data[pos:pos + 34] for pos in positions]
+        if all(slot[0] == 0 for slot in slots):
+            return False
+        original = b"\x01\x01" + integrity_digest(original_info)
+        require(all(slot == original for slot in slots), "Electron 完整性摘要与原始应用不一致。")
+        replacement = b"\x01\x01" + integrity_digest(updated_info)
+        for pos in positions:
+            data[pos:pos + 34] = replacement
+        data.flush()
+        os.fsync(handle.fileno())
+    return True
+
+
+def resign_helpers(app, temp):
+    frameworks = app / "Contents/Frameworks"
+    framework = frameworks / "Electron Framework.framework"
+    run("/usr/bin/codesign", "--force", "--sign", "-",
+        "--preserve-metadata=entitlements,flags,runtime", framework)
+    helpers = sorted(frameworks.glob("Claude Helper*.app"))
+    require(helpers, "未找到 Electron 辅助进程。")
+    for index, helper in enumerate(helpers):
+        require(helper.is_dir() and not helper.is_symlink(), "辅助进程路径异常。")
+        entitlements = plistlib.loads(run("/usr/bin/codesign", "-d", "--entitlements", ":-", helper).stdout)
+        for key in ("com.apple.application-identifier", "com.apple.developer.team-identifier", "keychain-access-groups"):
+            entitlements.pop(key, None)
+        entitlements["com.apple.security.cs.disable-library-validation"] = True
+        path = pathlib.Path(temp) / ("helper-entitlements-%d.plist" % index)
+        atomic(path, plistlib.dumps(entitlements))
+        run("/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime",
+            "--entitlements", path, helper)
 
 
 def unpack(raw):
@@ -433,6 +507,7 @@ def prepare(args):
         candidate = pathlib.Path(temp) / "Claude.app"
         run("/usr/bin/ditto", backup, candidate)
         info = bundle_version(candidate)
+        original_info = copy.deepcopy(info)
         install_language(args, candidate, info)
         if not language_only:
             data, header_hash = patched_asar(read(candidate / ASAR))
@@ -440,11 +515,13 @@ def prepare(args):
             require("Resources/app.asar" in info.get("ElectronAsarIntegrity", {}), "应用未声明主 ASAR 完整性摘要。")
             info["ElectronAsarIntegrity"]["Resources/app.asar"] = {"algorithm": "SHA256", "hash": header_hash}
         atomic(candidate / "Contents/Info.plist", plistlib.dumps(info, sort_keys=False), 0o644)
+        if update_framework_digest(candidate, original_info, info):
+            resign_helpers(candidate, temp)
         entitlements = plistlib.loads(run("/usr/bin/codesign", "-d", "--entitlements", ":-", candidate).stdout)
         # 临时签名不能冒用官方团队或钥匙串访问组，否则 AMFI 会拒绝启动。
         for key in ("com.apple.application-identifier", "com.apple.developer.team-identifier", "keychain-access-groups"):
             entitlements.pop(key, None)
-        # 保留 hardened runtime，同时允许加载保持官方签名的 Electron 框架。
+        # 保留 hardened runtime，同时允许加载不同签名的 Electron 框架。
         entitlements["com.apple.security.cs.disable-library-validation"] = True
         entitlements_path = pathlib.Path(temp) / "entitlements.plist"
         atomic(entitlements_path, plistlib.dumps(entitlements))
@@ -534,7 +611,8 @@ def restore(args):
     require(matches_snapshot(backup, state["original"]), "原始应用备份被修改。")
     verify_signature(backup, official=True)
     flag = state["browser"]
-    if not language_only:
+    restore_browser = not language_only and not (flag["present"] is True and flag["value"] is True)
+    if restore_browser:
         path, current, _, _ = config(args)
         require(path.stem == flag["id"] and
                 (current.get("builtinBrowserEnabled") is True or
@@ -549,7 +627,7 @@ def restore(args):
         try:
             candidate.rename(args.app)
             verify_signature(args.app, official=True)
-            if not language_only:
+            if restore_browser:
                 browser(args, flag)
             state["phase"] = "restored"
             persist(args, state)
@@ -559,7 +637,7 @@ def restore(args):
             previous.rename(args.app)
             raise
     shutil.rmtree(previous)
-    print("已恢复原始官方应用。" if language_only else "已恢复原始官方应用与安装前的浏览器开关，中文注册一并撤销。")
+    print("已恢复原始官方应用，中文注册一并撤销。")
     if not args.no_restart:
         run("/usr/bin/open", "-a", args.app)
 
