@@ -8,16 +8,16 @@ macOS 源码包含 **Intel 和 Apple Silicon 原生电脑控制与内置浏览�
 
 ## 直接下载双击包
 
-目前 [GitHub Release](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest) 中的 ZIP 是面向 Claude 3.6556.2 的旧版安装包。要使用本仓库源码中按资源结构识别的安装器，请按下方源码使用说明操作。旧版 ZIP 需**完整解压后再双击入口**，其中包含经过 SHA-256 核验的官方主语言包和动态语言包。
+[GitHub Release](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest) 提供 macOS 和 Windows 安装包。请**完整解压后再双击入口**；安装包包含经过 SHA-256 核验的官方主语言包和动态语言包。
 
 | 平台 | 下载 | 解压后双击 |
 | --- | --- | --- |
-| macOS | [Claude-ZhCN-macOS-3.6556.2.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-macOS-3.6556.2.zip) | `Install-ClaudeZhCN.command` |
-| Windows | [Claude-ZhCN-Windows-3.6556.2.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-Windows-3.6556.2.zip) | `ClaudeZhCN.cmd` |
+| macOS | [Claude-ZhCN-macOS.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-macOS.zip) | `Install-ClaudeZhCN.command` |
+| Windows | [Claude-ZhCN-Windows.zip](https://github.com/hhmlyy/claude-official-zh-cn/releases/latest/download/Claude-ZhCN-Windows.zip) | `ClaudeZhCN.cmd` |
 
-上表的旧版安装包仅适配 **Claude Desktop 3.6556.2**。Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安装不支持修改。macOS ZIP 保留入口的可执行权限，不需要手动 `chmod`；未使用 Apple 开发者证书签名或公证，系统可能要求首次打开确认，参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安装不支持修改。macOS ZIP 保留入口的可执行权限，不需要手动 `chmod`；未使用 Apple 开发者证书签名或公证，系统可能要求首次打开确认，参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
-源码安装器不按 Claude 版本号或固定应用文件哈希限制安装。未能唯一识别资源结构或通过安全检查时会停止；兼容性仍取决于 Claude 的实际结构。安装前请等待任务结束并退出 Claude。macOS 两种模式都会本地重签应用并放宽该应用的动态库签名限制，官方硬件密钥等登录能力无法保留；脚本保存完整官方备份以供还原。
+安装器不按 Claude 版本号或固定应用文件哈希限制安装。未能唯一识别资源结构或通过安全检查时会停止；兼容性仍取决于 Claude 的实际结构。安装前请等待任务结束并退出 Claude。macOS 两种模式都会本地重签应用并放宽该应用的动态库签名限制，官方硬件密钥等登录能力无法保留；脚本保存完整官方备份以供还原。
 
 每个包附有 `README.txt` 和许可说明；Release 同时提供 `SHA256SUMS.txt` 供核对下载完整性。GitHub 自动生成的 **Source code** 压缩包不含官方语言资源，开发者可按下方源码使用说明运行。
 
