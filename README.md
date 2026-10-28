@@ -1,10 +1,10 @@
 # Claude 官方简体中文注册工具 · macOS / Windows
 
-让 Claude Desktop 的本地界面（包括 Magpie 的第三方网关模式）在原有 **Language** 菜单中出现 **中文（简体）**，并加载 Claude 官方主语言包和动态语言包。
+这个工具将 Claude 官方简体中文资源注册到 Claude Desktop 的 **Language** 菜单，也适用于使用 Magpie 等第三方网关的本地界面。安装后可在菜单中选择 **中文（简体）**。
 
 这是独立的社区工具，与 Anthropic、Claude、Magpie 无隶属关系。“官方”仅指翻译资源来源。安装会修改本地应用的语言注册 JavaScript，应用更新可能覆盖修改。
 
-macOS 源码包含 **Intel 和 Apple Silicon 原生电脑控制与内置浏览器适配**，与中文共用安装、检查和还原入口。安装器根据应用资源结构判断是否能够适配，不提供云端账号权益。
+macOS 安装器还提供 Intel 和 Apple Silicon 的原生电脑控制与内置浏览器适配，与中文注册共用安装、检查和还原入口。这些功能仍需要相应的系统权限、模型和网关支持；工具不会开通云端账号权益。
 
 ## 直接下载双击包
 
@@ -26,14 +26,14 @@ Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安�
 | 项目 | 当前范围 |
 | --- | --- |
 | Claude Desktop | 不限制版本号；资源结构必须可识别，结构变化时可能不兼容 |
-| macOS | 系统自带 Bash 3.2；默认安装位置 `/Applications/Claude.app` |
-| macOS 原生工具适配 | **Intel x86_64 或 Apple Silicon arm64**，官方签名和原生功能表必须通过检查；电脑控制需 macOS 14+，源码使用 Python **3.9+** |
-| Windows | Windows PowerShell **5.1** 或 PowerShell **7** |
+| macOS | 使用系统自带 Bash；默认安装位置 `/Applications/Claude.app` |
+| macOS 原生工具适配 | **Intel x86_64 或 Apple Silicon arm64**；官方签名和原生功能表必须通过检查，电脑控制还需满足 Claude 的系统要求 |
+| Windows | 使用系统自带的 Windows PowerShell |
 | 安装目录 | 当前用户可写的普通安装目录；Windows 自动发现，两个平台均可手动指定 |
 | Windows 资源布局 | 支持解包的 `ion-dist` 目录；不支持 `ion-dist.asar`。可检查解包目录，但**不支持修改受保护的 WindowsApps 目录** |
 | 界面验证 | 同一前端资源的 macOS 版本已验证菜单切换；Windows 图形界面尚未实机验证 |
 
-已直接核对官方 Windows x64 和 ARM64 MSIX **3.6556.2.0** 中的前端资源。源码安装器允许文件名和哈希变化，但要求语言注册结构可唯一识别。这不表示受保护的 MSIX 安装已可修改，也不表示 Windows 原生功能已经适配。
+已核对官方 Windows x64 和 ARM64 安装包中的前端资源。安装器允许文件名和哈希变化，但要求语言注册结构可唯一识别；这不表示受保护的 MSIX 安装可以修改，也不表示 Windows 原生功能已经适配。
 
 当前官方 Windows 安装器可能安装为 MSIX，因此本版**不能保证所有默认安装方式都能使用**。脚本会明确提示，不会接管 WindowsApps 权限、重新打包 MSIX、改动应用签名或更改系统策略。官方安装说明见 [Deploy Claude Desktop for Windows](https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows)。
 
@@ -72,7 +72,7 @@ Windows 请先从托盘完全退出 Claude；受保护的 WindowsApps/MSIX 安�
 %LOCALAPPDATA%\ClaudeOfficialZhHans\by-content\<安装路径摘要>\<原始注册文件 SHA-256>\
 ```
 
-已有的 3.6556.2 旧版备份仍可用于还原。
+符合校验条件的旧版备份仍可用于还原。
 
 ## macOS 源码使用
 
@@ -116,7 +116,7 @@ bash ./Install-ClaudeZhCN.command --app '/path/to/Claude.app' --no-restart
 bash ./Install-ClaudeZhCN.command --language-only
 ```
 
-源码中的两种模式均需要 Python 3.9 或更新版本，并使用标准库和系统自带 `codesign`，不需要 Node.js 或第三方 Python 库。`--native` 可以显式要求原生模式；平台、签名或资源结构不符时会停止。
+源码中的两种模式均需要兼容的 Python 环境，并使用标准库和系统自带 `codesign`，不需要 Node.js 或第三方 Python 库。`--native` 可以显式要求原生模式；平台、签名或资源结构不符时会停止。
 
 脚本优先使用 `catalogs` 目录中的两份官方 JSON，也可通过 `--catalog-dir '/path/to/catalogs'` 指定目录。缺少文件时下载并核验官方资源，下载失败不会修改实际应用。
 
@@ -168,11 +168,11 @@ claude-official-zh-cn\
 
 ## 验证
 
-源码安装器使用 Claude 3.6556.2 和 4.29.0 的 macOS 官方应用隔离副本，验证原生模式及仅中文模式的安装、重复安装、检查和还原；4.29.0 的语言资源为 ASAR。还检查了未修改资源和还原后的官方签名。这些测试没有修改已安装的应用，也未验证 4.29.0 图形界面或实际电脑控制。
+macOS 已使用官方应用的隔离副本验证安装、重复安装、检查、失败回滚和还原，并核对未修改的资源及还原后的官方签名。测试覆盖 Intel、Apple Silicon 和通用应用，以及普通资源目录和 ASAR 资源布局；自动测试不会替换已安装的应用。
 
-Intel 更新版、Apple Silicon 更新版及通用版的官方应用副本均已通过隔离测试，验证 ASAR 中其余文件逐字节一致、安装失败回滚、重复安装、完整还原及官方签名恢复；另验证配置修改与还原不会覆盖其他字段。这些自动测试不替换实际应用，Apple Silicon 图形界面和实际电脑控制仍需实机验证。
 
-上述 Intel / macOS 26.5.2 / Claude 3.6556.2 组合也已在 Magpie 下完成实机验证：辅助功能与屏幕录制均已授予；Claude 自带的 `mcp__computer-use__open_application`、`screenshot` 和 `computer_batch` 打开计算器，通过界面点击计算 `1+2`，截图确认结果为 `3`；`mcp__Claude_Browser__navigate` 和 `read_page` 成功打开并读取 `https://example.com`。实机结果仅覆盖此构建及测试时的模型、网关组合。
+
+Intel Mac 已在 Magpie 环境下实机验证电脑控制和内置浏览器。结果仅覆盖测试时使用的应用构建、系统、模型和网关；Apple Silicon 的实际图形操作仍需实机验证。
 
 ```bash
 CLAUDE_NATIVE_FIXTURE='/path/to/pristine/Claude.app' PYTHONDONTWRITEBYTECODE=1 \
@@ -181,7 +181,7 @@ CLAUDE_NATIVE_FIXTURE='/path/to/pristine/Claude.app' PYTHONDONTWRITEBYTECODE=1 \
 
 未设置 `CLAUDE_NATIVE_FIXTURE` 时仅运行配置测试。原生适配参考 [Claude-Native-Unlock](https://github.com/canner0725-byte/Claude-Native-Unlock) 的 ASAR 处理与功能表定位方法，许可及使用范围见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-`tests/Test-Installer.ps1` 使用官方 Windows 3.6556.2 安装包中的真实资源进行验证，包括注册结果、未知注册结构和中文文件的拒绝、文件替换和原始文件还原。
+`tests/Test-Installer.ps1` 使用官方 Windows 安装包中的真实资源进行验证，包括注册结果、未知注册结构和中文文件的拒绝、文件替换和原始文件还原。
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Installer.ps1 -MsixPath 'D:\Claude.msix'
@@ -193,7 +193,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Installer.p
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Installer.ps1 -MsixPath 'D:\Claude.msix' -CatalogDirectory 'D:\官方语言包'
 ```
 
-测试仅在系统临时目录中创建模拟应用目录，不改动已安装的 Claude。GitHub Actions 使用 Windows PowerShell 5.1 和 PowerShell 7 运行不依赖语言包下载的测试。
+测试仅在系统临时目录中创建模拟应用目录，不改动已安装的 Claude。GitHub Actions 在两种 PowerShell 环境中运行不依赖语言包下载的测试；Windows 图形界面尚未实机验证。
 
 ## 许可
 
