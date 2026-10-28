@@ -61,15 +61,21 @@ jobs:
           config="$test_home/Library/Application Support/Claude-3p/configLibrary"
           mkdir -p "$package/runtime" "$config"
           cp Install-ClaudeZhCN.command native_macos.py "$package/"
+          chmod 755 "$package/Install-ClaudeZhCN.command"
           cp "$RUNNER_TEMP/python-arm64.tar.gz" "$package/runtime/"
           cp -R "$RUNNER_TEMP/catalogs" "$package/"
+          ditto -c -k --norsrc --keepParent "$package" "$RUNNER_TEMP/launcher.zip"
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          ditto -x -k "$RUNNER_TEMP/launcher.zip" "$RUNNER_TEMP/unpacked"
+          package="$RUNNER_TEMP/unpacked/launcher"
+          test -x "$package/Install-ClaudeZhCN.command"
           ditto "$RUNNER_TEMP/fixture/Claude.app" "$package/Claude.app"
           printf '%s' '{"appliedId":"fixture"}' > "$config/_meta.json"
           printf '%s' '{"inferenceProvider":"gateway"}' > "$config/fixture.json"
           HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          HOME="$test_home" "$package/Install-ClaudeZhCN.command" --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
           HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --check --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
-          HOME="$test_home" bash "$package/Install-ClaudeZhCN.command" --restore --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
+          HOME="$test_home" "$package/Install-ClaudeZhCN.command" --restore --no-restart --app "$package/Claude.app" --backup-dir "$RUNNER_TEMP/launcher-backup"
       - name: Detach universal fixture
         if: always() && matrix.fixture == 'universal'
         shell: bash
