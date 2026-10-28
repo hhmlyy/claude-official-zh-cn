@@ -126,9 +126,9 @@ bash ./Install-ClaudeZhCN.command --language-only
 ~/Library/Application Support/ClaudeOfficialZhHans/<Claude版本>/
 ```
 
-原生模式在此目录的 `native-x86_64` 或 `native-arm64` 中保留完整官方应用备份及安装记录；仅中文模式使用 `language-x86_64` 或 `language-arm64`。准备时另有一个待安装副本。应用和备份必须属于当前用户可写的普通目录。安装会修改语言资源，原生模式还会修改 `app.asar`；安装器同步 ASAR 完整性摘要并本地临时重签最外层应用，嵌套原生组件保持官方原文件。临时签名不等于 Apple 开发者签名或公证，首次使用时系统可能要求重新授权。
+原生模式在此目录的 `native-x86_64` 或 `native-arm64` 中保留完整官方应用备份及安装记录；仅中文模式使用 `language-x86_64` 或 `language-arm64`。准备时另有一个待安装副本。应用和备份必须属于当前用户可写的普通目录。安装会修改语言资源，原生模式还会修改 `app.asar`；安装器同步 ASAR 完整性摘要并本地临时重签应用。如果 Electron 框架包含内嵌摘要，也会更新该摘要并重签框架与辅助进程；其他原生组件保持原文件。临时签名不等于 Apple 开发者签名或公证，首次使用时系统可能要求重新授权。
 
-临时签名移除依赖官方团队证书的应用标识与钥匙串访问组，因此不能保留官方 WebAuthn、硬件密钥及企业登录共享钥匙串能力。保留 hardened runtime，但为加载官方签名的 Electron 框架，对本应用设置 `disable-library-validation` 例外；这会放宽本应用的动态库签名限制，见 [Apple 文档](https://developer.apple.com/documentation/BundleResources/Entitlements/com.apple.security.cs.disable-library-validation)。完整还原可恢复原签名与权限项。
+临时签名移除依赖官方团队证书的应用标识与钥匙串访问组，因此不能保留官方 WebAuthn、硬件密钥及企业登录共享钥匙串能力。保留 hardened runtime，但为加载 Electron 框架，对应用设置 `disable-library-validation` 例外；需要重签辅助进程时，也会对这些进程设置同一例外。这会放宽相应进程的动态库签名限制，见 [Apple 文档](https://developer.apple.com/documentation/BundleResources/Entitlements/com.apple.security.cs.disable-library-validation)。完整还原可恢复原签名与权限项。
 
 安装只恢复本地可用性条件。电脑控制仍需在 Claude 设置中启用，并取得系统的辅助功能与屏幕录制权限；实际操作还取决于所选模型和网关的工具协议支持。官方操作检查与确认逻辑保持原样。浏览器使用 Claude 自带浏览器，仅开启现有 `builtinBrowserEnabled` 配置；不会改动网关地址或密钥。
 
