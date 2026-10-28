@@ -46,11 +46,31 @@ class ArchitectureTests(unittest.TestCase):
                 native.environment()
 
 
+class LanguageRegistrationTests(unittest.TestCase):
+    def test_variable_names_are_discovered_and_registration_is_checked(self):
+        original = (b'var Ab=["en-US","ja-JP"];function test(e){return Ab.includes(e)}'
+                    b'var Cd=["en-US","ja-JP"];function choose(e,t=Cd){let n=new Map;}'
+                    b'"/i18n/dynamic/"')
+        result = native.registered_bundle(original)
+        self.assertIn(b'Ab.push("zh-Hans")', result)
+        self.assertIn(b'Cd.push("zh-Hans")', result)
+        with self.assertRaisesRegex(ValueError, "已经修改"):
+            native.registered_bundle(result)
+        with self.assertRaisesRegex(ValueError, "结构不匹配"):
+            native.registered_bundle(original.replace(b'var Cd=["en-US","ja-JP"]',
+                                                       b'var Cd=["en-US","fr-FR"]'))
+        with self.assertRaisesRegex(ValueError, "唯一识别"):
+            native.registered_bundle(original + original)
+
+
 class BrowserConfigTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="claude-native-test-")
         self.addCleanup(self.temp.cleanup)
         self.directory = pathlib.Path(self.temp.name).resolve()
+        policy = mock.patch.object(native, "MANAGED_POLICY", self.directory / "managed" / "claude.plist")
+        policy.start()
+        self.addCleanup(policy.stop)
         self.path = self.directory / "fixture.json"
         (self.directory / "_meta.json").write_text(json.dumps({"appliedId": "fixture"}))
         self.original = {"inferenceProvider": "gateway", "inferenceGatewayBaseUrl": "http://127.0.0.1:9999",
@@ -93,11 +113,22 @@ class BrowserConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "符号链接"):
             native.browser(self.args)
 
+    def test_managed_policy_is_rejected(self):
+        native.MANAGED_POLICY.parent.mkdir()
+        native.MANAGED_POLICY.touch()
+        with self.assertRaisesRegex(ValueError, "组织管理策略"):
+            native.browser(self.args)
+
 
 @unittest.skipUnless(FIXTURE, "设置 CLAUDE_NATIVE_FIXTURE 指向官方应用副本")
 class NativeFixtureTests(unittest.TestCase):
     def setUp(self):
         self.architecture = os.environ.get("CLAUDE_NATIVE_FIXTURE_ARCH", native.host_architecture())
+        temp = tempfile.TemporaryDirectory(prefix="claude-test-policy-")
+        self.addCleanup(temp.cleanup)
+        policy = mock.patch.object(native, "MANAGED_POLICY", pathlib.Path(temp.name).resolve() / "claude.plist")
+        policy.start()
+        self.addCleanup(policy.stop)
         if os.environ.get("CLAUDE_NATIVE_FIXTURE_ARCH"):
             patcher = mock.patch.object(native, "host_architecture", return_value=self.architecture)
             patcher.start()
@@ -117,8 +148,9 @@ class NativeFixtureTests(unittest.TestCase):
         after, new_base = native.unpack(patched)
         old_nodes, new_nodes = dict(native.nodes(before)), dict(native.nodes(after))
         self.assertEqual(set(old_nodes), set(new_nodes))
+        main_path, _ = native.main_path(original)
         for path, node in old_nodes.items():
-            if path == native.MAIN:
+            if path == main_path:
                 continue
             new = new_nodes[path]
             start, stop = old_base + int(node["offset"]), new_base + int(new["offset"])
@@ -129,7 +161,7 @@ class NativeFixtureTests(unittest.TestCase):
             syntax = subprocess.run(["node", "--check"], input=native.main_bytes(patched),
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.assertEqual(syntax.returncode, 0, syntax.stderr.decode(errors="replace"))
-        with self.assertRaisesRegex(ValueError, "官方原版"):
+        with self.assertRaisesRegex(ValueError, "已经有定义"):
             native.patched_asar(patched)
 
     def test_real_bundle_install_rollback_idempotence_and_restore(self):
@@ -149,6 +181,28 @@ class NativeFixtureTests(unittest.TestCase):
             baseline = native.snapshot(app)
             native.prepare(args)
             self.assertEqual(native.snapshot(app), baseline)
+            if baseline[native.ION_ASAR] is not None:
+                original_ion = native.read(state_dir / "Claude.original.app" / native.ION_ASAR)
+                patched_ion = native.read(state_dir / "Claude.prepared.app" / native.ION_ASAR)
+                old_header, old_base = native.unpack(original_ion)
+                new_header, new_base = native.unpack(patched_ion)
+                old_nodes, new_nodes = dict(native.nodes(old_header)), dict(native.nodes(new_header))
+                registry = native.language_layout(state_dir / "Claude.original.app")[2][0]
+                for path, node in old_nodes.items():
+                    if path == registry:
+                        continue
+                    new = new_nodes[path]
+                    start, stop = old_base + int(node["offset"]), new_base + int(new["offset"])
+                    self.assertEqual(original_ion[start:start + node["size"]],
+                                     patched_ion[stop:stop + new["size"]], path)
+                self.assertEqual(native.asar_file(patched_ion, registry),
+                                 native.registered_bundle(native.asar_file(original_ion, registry)))
+                for _, path, expected, _ in native.CATALOGS:
+                    self.assertEqual(native.digest(native.asar_file(patched_ion, path)), expected)
+                info = native.bundle_version(state_dir / "Claude.prepared.app")
+                encoded = json.dumps(new_header, separators=(",", ":"), ensure_ascii=False).encode()
+                self.assertEqual(info["ElectronAsarIntegrity"]["Resources/ion-dist.asar"]["hash"],
+                                 native.digest(encoded))
             original_source = native.source
 
             def source_with_other_backup(path):
@@ -158,6 +212,13 @@ class NativeFixtureTests(unittest.TestCase):
             with mock.patch.object(native, "source", side_effect=source_with_other_backup):
                 with self.assertRaisesRegex(ValueError, "备份属于不同构建"):
                     native.prepare(args)
+            self.assertEqual(native.snapshot(app), baseline)
+            language_path = app / (native.ION_ASAR if baseline[native.ION_ASAR] else native.REGISTRY)
+            original_language = native.read(language_path)
+            native.atomic(language_path, original_language + b" ", 0o644)
+            with self.assertRaisesRegex(ValueError, "备份与当前语言资源不一致"):
+                native.prepare(args)
+            native.atomic(language_path, original_language, 0o644)
             self.assertEqual(native.snapshot(app), baseline)
             backup_plist = state_dir / "Claude.original.app/Contents/Info.plist"
             original_plist = native.read(backup_plist)
@@ -188,6 +249,54 @@ class NativeFixtureTests(unittest.TestCase):
             native.restore(args)
             self.assertEqual(native.snapshot(app), baseline)
             self.assertEqual(json.loads(config_path.read_text()), original_config)
+            native.verify_signature(app, official=True)
+
+    def test_language_only_install_and_restore(self):
+        with tempfile.TemporaryDirectory(prefix="claude-language-roundtrip-") as temp:
+            root = pathlib.Path(temp).resolve()
+            app, backup = root / "Claude.app", root / "backup"
+            native.run("/usr/bin/ditto", pathlib.Path(FIXTURE), app)
+            state_dir = backup / ("language-" + self.architecture)
+            state_dir.mkdir(parents=True)
+            args = types.SimpleNamespace(app=app, backup_dir=backup, config_dir=root / "unused-config",
+                                         catalog_dir=CATALOG_DIR, state_dir=state_dir,
+                                         no_restart=True, language_only=True)
+            baseline = native.snapshot(app)
+            native.check(args)
+            native.install(args)
+            native.check(args)
+            installed = native.snapshot(app)
+            self.assertEqual(installed[native.ASAR], baseline[native.ASAR])
+            self.assertFalse(args.config_dir.exists())
+            native.install(args)
+            self.assertEqual(native.snapshot(app), installed)
+            native.restore(args)
+            self.assertEqual(native.snapshot(app), baseline)
+            native.verify_signature(app, official=True)
+            native.restore(args)
+
+    def test_legacy_language_backup_can_be_migrated(self):
+        if not (pathlib.Path(FIXTURE) / native.REGISTRY).is_file():
+            self.skipTest("此应用没有旧版语言资源布局")
+        with tempfile.TemporaryDirectory(prefix="claude-legacy-roundtrip-") as temp:
+            root = pathlib.Path(temp).resolve()
+            app, backup = root / "Claude.app", root / "backup"
+            native.run("/usr/bin/ditto", pathlib.Path(FIXTURE), app)
+            state_dir = backup / ("language-" + self.architecture)
+            state_dir.mkdir(parents=True)
+            registry = app / native.REGISTRY
+            original = native.read(registry)
+            (backup / "shared-52.original.js").write_bytes(original)
+            native.atomic(registry, native.registered_bundle(original), 0o644)
+            for name, target, _, _ in native.CATALOGS:
+                shutil.copyfile(CATALOG_DIR / name, app / "Contents/Resources/ion-dist" / target)
+            args = types.SimpleNamespace(app=app, backup_dir=backup, config_dir=root / "unused-config",
+                                         catalog_dir=CATALOG_DIR, state_dir=state_dir,
+                                         no_restart=True, language_only=True)
+            native.prepare(args)
+            native.install(args)
+            native.restore(args)
+            self.assertEqual(native.read(registry), original)
             native.verify_signature(app, official=True)
 
 
