@@ -7,13 +7,13 @@ Claude 官方中文与原生工具 — macOS
 3. 双击 Install-ClaudeZhCN.command，或在终端运行 bash ./Install-ClaudeZhCN.command。
 4. 安装成功后会重新打开 Claude。在账号菜单 → Language → 中文（简体）中选择。
 
-默认应用位置为 /Applications/Claude.app。Intel 和 Apple Silicon 共用入口，默认安装中文与原生工具适配。电脑控制内置检查要求 macOS 14 或更新版本，后台控制还受 Claude 自身的系统版本条件限制。未实测的系统不能保证功能正常。Release 包内置两种处理器的 Python 运行环境，不需要另行安装 Python；运行时只解压所需架构到临时目录，结束后清理。源码包不含运行环境，需要 Python 3.9 或更新版本。安装器检查官方签名、应用结构和备份完整性，不兼容时会停止并显示原因。检测到 Claude 仍在运行时会停止，不会强制结束任务。
+默认应用位置为 /Applications/Claude.app。Intel 和 Apple Silicon 共用入口，默认安装中文与原生工具适配。电脑控制还需满足 Claude 的系统要求；未实测的系统不能保证功能正常。Release 包内置两种处理器的 Python 运行环境，不需要另行安装 Python；运行时只解压所需架构到临时目录，结束后清理。源码包不含运行环境，需要兼容的 Python。安装器检查官方签名、应用结构和备份完整性，不兼容时会停止并显示原因。检测到 Claude 仍在运行时会停止，不会强制结束任务。
 
 语言 JSON 优先从 catalogs 读取；缺少时从固定官方地址下载并核验。Release 离线包包含两份原始官方 JSON；GitHub 自动生成的 Source code 压缩包不包含语言资源。
 
 原生适配只恢复本地功能开关。电脑控制仍需在 Claude 设置中启用、取得系统的辅助功能与屏幕录制权限，并由模型和网关支持相应工具协议。官方操作检查和确认逻辑保持原样。浏览器使用官方内置浏览器，不更改网关地址或密钥。
 
-上述 Intel / macOS 26.5.2 / Claude 3.6556.2 组合已在 Magpie 下实机验证：辅助功能与屏幕录制均已授予，Claude 自带电脑控制通过界面点击计算 1+2，截图确认结果为 3；内置浏览器成功打开并读取 https://example.com。结果仅覆盖此构建及测试时的模型、网关组合。Apple Silicon 的官方应用文件已在隔离副本验证安装、回滚和还原；实际电脑控制与浏览器操作仍需在 Apple Silicon 机器上验证。
+Intel Mac 已在 Magpie 环境下实机验证电脑控制和内置浏览器。结果仅覆盖测试时使用的应用构建、系统、模型和网关。Apple Silicon 的官方应用文件已在隔离副本验证安装、回滚和还原；实际图形操作仍需实机验证。
 
 入口未使用 Apple 开发者证书签名或公证。如果系统拦截首次打开，请查看 Apple 的官方说明：
 https://support.apple.com/zh-cn/102445
